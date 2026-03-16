@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirmación de Registro en Auri</title>
+  <style>
+    /* Estilos base para compatibilidad con la gran mayoría de clientes de correo */
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #0d0f12; /* Fondo muy oscuro, casi negro */
+      font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      color: #e2e8f0;
+      -webkit-font-smoothing: antialiased;
+    }
+    table {
+      border-spacing: 0;
+      width: 100%;
+    }
+    td {
+      padding: 0;
+    }
+    
+    /* Contenedor principal centrado */
+    .wrapper {
+      width: 100%;
+      background-color: #0d0f12;
+      padding: 40px 0;
+    }
+    
+    .container {
+      max-width: 600px;
+      margin: 0 auto;
+      background-color: #1a1d24; /* Color de tarjeta/Superficie */
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid #2d3748;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Cabecera / Logo */
+    .header {
+      text-align: center;
+      padding: 40px 20px 20px;
+    }
+    .brand {
+      color: #C9A84C; /* Dorado Auri */
+      font-size: 32px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      margin: 0;
+      display: inline-block;
+    }
+    .brand span {
+      font-size: 28px;
+    }
+    
+    /* Cuerpo del mensaje */
+    .content {
+      padding: 20px 40px 40px;
+      text-align: center;
+    }
+    .title {
+      font-size: 24px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-top: 0;
+      margin-bottom: 16px;
+    }
+    .text {
+      font-size: 16px;
+      line-height: 1.6;
+      color: #a0aec0; /* Gris apagado para texto secundario */
+      margin-bottom: 32px;
+    }
+
+    /* Botón Principal */
+    .button-container {
+      margin: 40px 0;
+    }
+    .button {
+      background-color: #C9A84C;
+      color: #0d0f12;
+      text-decoration: none;
+      padding: 16px 32px;
+      border-radius: 8px;
+      font-weight: 700;
+      font-size: 16px;
+      display: inline-block;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    /* Footer */
+    .footer {
+      background-color: #0a0c0e;
+      padding: 30px;
+      text-align: center;
+      border-top: 1px solid #2d3748;
+    }
+    .footer-text {
+      color: #718096;
+      font-size: 12px;
+      line-height: 1.5;
+      margin: 0;
+    }
+    
+    .tagline {
+      color: #C9A84C;
+      font-style: italic;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    /* Diseño responsivo */
+    @media screen and (max-width: 600px) {
+      .container {
+        width: 100% !important;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+      }
+      .content {
+        padding: 20px !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <table role="presentation">
+      <tr>
+        <td align="center">
+          
+          <div class="container">
+            <!-- Header -->
+            <div class="header">
+              <h1 class="brand"><span>✦</span> AURI</h1>
+              <p class="tagline">Tus finanzas, en oro.</p>
+            </div>
+
+            <!-- Content Area -->
+            <div class="content">
+              <h2 class="title">Bienvenido/a a la excelencia.</h2>
+              
+              <p class="text">
+                Estás a un paso de tomar el control absoluto de tus finanzas personales y diseñadas a tu medida. Validá tu correo para poder activar tu cuenta de Auri y comenzar tu proceso de onboarding.
+              </p>
+
+              <!-- CTA Button -->
+              <div class="button-container">
+                <!-- Variables inyectadas por Supabase: {{ .ConfirmationURL }} -->
+                <a href="{{ .ConfirmationURL }}" class="button" target="_blank">Confirmar mi cuenta</a>
+              </div>
+
+              <p class="text" style="font-size: 14px; margin-top: 40px;">
+                Si el botón de arriba no funciona, copiá y pegá el siguiente enlace directamente en tu navegador:<br><br>
+                <a href="{{ .ConfirmationURL }}" style="color: #C9A84C; word-break: break-all;">{{ .ConfirmationURL }}</a>
+              </p>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+              <p class="footer-text">
+                Recibís este email porque te registraste en Auri. <br>
+                Si no fuiste vos, podés ignorar este correo sin ningún problema.
+              </p>
+              <p class="footer-text" style="margin-top: 16px;">
+                © 2026 Auri App. Todos los derechos reservados.
+              </p>
+            </div>
+          </div>
+
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>

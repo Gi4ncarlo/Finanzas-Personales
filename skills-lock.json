@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "skills": {
+    "economic-systems": {
+      "source": "jwynia/agent-skills",
+      "sourceType": "github",
+      "computedHash": "e9ea6df2767bc92cd6b6bff47cb9b62f71ea5acabbdbee4ac8335670d6673347"
+    },
+    "expo-api-routes": {
+      "source": "expo/skills",
+      "sourceType": "github",
+      "computedHash": "267bd3bfa27718103a74458df1e875ff6f6db31cba2ebe1d8a527cf25da39761"
+    },
+    "react-ui-patterns": {
+      "source": "sickn33/antigravity-awesome-skills",
+      "sourceType": "github",
+      "computedHash": "6c004e2900e1c11452e3de3ff144e287daf69fcdcb6f27c11483d34bddb57326"
+    },
+    "responsive-design": {
+      "source": "supercent-io/skills-template",
+      "sourceType": "github",
+      "computedHash": "1c2c94867cc1eeca74977d57b0d9818616934a62a58e100d9350ff11cd7244fd"
+    },
+    "supabase-postgres-best-practices": {
+      "source": "supabase/agent-skills",
+      "sourceType": "github",
+      "computedHash": "e3ba3d760c5f4cc43b02a91fb8924f726c7818f95cc35d79d0a606ca622b72f5"
+    },
+    "swift-charts": {
+      "source": "dpearson2699/swift-ios-skills",
+      "sourceType": "github",
+      "computedHash": "a5fd9a83344e3fc082ea4e7b816ee347d40a2b120f418f6374ae4e2fdcfbf1d1"
+    },
+    "tailwind-css-patterns": {
+      "source": "giuseppe-trisciuoglio/developer-kit",
+      "sourceType": "github",
+      "computedHash": "1539970dbed5bb860c92ea1ef4ec10210f926d7f4df6fad4125c2cfb93fc6f8b"
+    }
+  }
+}
