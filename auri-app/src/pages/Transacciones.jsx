@@ -8,7 +8,10 @@ import { exportToCSV } from '../utils/csv';
 import Skeleton from '../components/ui/Skeleton';
 import TransaccionModal from '../components/transacciones/TransaccionModal';
 import TransaccionDetalle from '../components/transacciones/TransaccionDetalle';
+import AjustarMontoModal from '../components/transacciones/AjustarMontoModal';
 import { Plus, Download, Search, X, ArrowUpRight, ArrowDownLeft, ArrowLeftRight, Filter } from 'lucide-react';
+import DatePickerModern from '../components/ui/DatePickerModern';
+
 
 const PAGE_SIZE = 20;
 
@@ -28,6 +31,7 @@ export default function Transacciones() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTx, setEditingTx] = useState(null);
   const [selectedTx, setSelectedTx] = useState(null);
+  const [ajustarMontoTx, setAjustarMontoTx] = useState(null);
 
   // Filtros desde URL
   const filtros = {
@@ -287,8 +291,18 @@ export default function Transacciones() {
         </div>
 
         {/* Custom date range inputs */}
-        <input className="input" type="date" style={{ width: 'auto' }} value={filtros.desde} onChange={(e) => setFiltro('desde', e.target.value)} title="Desde" />
-        <input className="input" type="date" style={{ width: 'auto' }} value={filtros.hasta} onChange={(e) => setFiltro('hasta', e.target.value)} title="Hasta" />
+        <DatePickerModern
+          placeholder="Desde"
+          value={filtros.desde}
+          onChange={(val) => setFiltro('desde', val)}
+          containerStyle={{ width: '130px' }}
+        />
+        <DatePickerModern
+          placeholder="Hasta"
+          value={filtros.hasta}
+          onChange={(val) => setFiltro('hasta', val)}
+          containerStyle={{ width: '130px' }}
+        />
 
         {activeFilterCount > 0 && (
           <button onClick={clearFilters} style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'none', border: 'none', color: 'var(--color-gold)', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}>
@@ -334,11 +348,26 @@ export default function Transacciones() {
                         <TxIcon size={18} color={txColor} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {tx.descripcion || 'Sin descripción'}
+                        <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {tx.descripcion || 'Sin descripción'}
+                          </span>
                         </div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
-                          {tx.category_name} · {new Date(tx.fecha).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
+                        <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                          <span>{tx.category_name} · {new Date(tx.fecha).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}</span>
+                          {tx.es_automatica && (
+                            <>
+                              <span style={{ fontSize: '0.7rem', fontWeight: 600, backgroundColor: 'rgba(52,152,219,0.15)', color: '#3498DB', padding: '2px 6px', borderRadius: '4px', letterSpacing: '0.3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                🤖 Automático
+                              </span>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setAjustarMontoTx(tx); }}
+                                style={{ background: 'none', border: '1px solid var(--color-border)', borderRadius: '4px', padding: '2px 8px', fontSize: '0.7rem', color: 'var(--color-text)', cursor: 'pointer' }}
+                              >
+                                Ajustar monto
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
@@ -389,6 +418,16 @@ export default function Transacciones() {
           onDelete={handleDelete}
         />
       )}
+
+      {/* Mini-modal Ajuste Monto Automático */}
+      <AjustarMontoModal
+        isOpen={!!ajustarMontoTx}
+        onClose={() => setAjustarMontoTx(null)}
+        transaccion={ajustarMontoTx}
+        onSaved={() => {
+          fetchTransactions();
+        }}
+      />
     </div>
   );
 }

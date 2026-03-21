@@ -3,10 +3,12 @@ import { useAuth } from '../../context/AuthContext';
 import useDolarRate, { usdToArs } from '../../hooks/useDolarBlue';
 import { formatARS } from '../../utils/currency';
 import { X, ArrowUpRight, ArrowDownLeft, ArrowLeftRight, AlertTriangle } from 'lucide-react';
+import DatePickerModern from '../ui/DatePickerModern';
+
 
 export default function TransaccionModal({ isOpen, onClose, onSave, transaccion = null, accounts = [], categories = [] }) {
   const { user, profile } = useAuth();
-  const tipoCambioPref = profile?.tipo_cambio_pref || 'blue';
+  const tipoCambioPref = profile?.tipo_cambio_pref || 'oficial';
   const { compra, venta, nombre: dolarNombre, loading: dolarLoading } = useDolarRate(tipoCambioPref);
   const isEditing = !!transaccion;
 
@@ -321,8 +323,11 @@ export default function TransaccionModal({ isOpen, onClose, onSave, transaccion 
 
           {/* Fecha */}
           <div>
-            <label style={{ display: 'block', fontWeight: 500, marginBottom: '8px', fontSize: '0.9rem' }}>Fecha *</label>
-            <input className="input" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} />
+            <DatePickerModern 
+              label="Fecha *"
+              value={fecha}
+              onChange={setFecha}
+            />
             {isFutureDate && (
               <p style={{ fontSize: '0.8rem', color: 'var(--color-warning)', marginTop: '6px' }}>
                 ⚠️ La fecha seleccionada es más de un año en el futuro.

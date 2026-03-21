@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import useDolarBlue from '../hooks/useDolarBlue';
+import useDolarRate from '../hooks/useDolarBlue';
 import { formatARS, formatUSD } from '../utils/currency';
 import Skeleton from '../components/ui/Skeleton';
 import CuentaModal from '../components/cuentas/CuentaModal';
@@ -17,10 +17,10 @@ const ICON_MAP = {
 const TIPO_LABELS = { banco: 'Banco', efectivo: 'Efectivo', virtual: 'Virtual', inversion: 'Inversión', otro: 'Otro' };
 
 export default function Cuentas() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { dolarBlue } = useDolarBlue();
+  const { venta: dolarVenta } = useDolarRate(profile?.tipo_cambio_pref || 'oficial');
 
   const [accounts, setAccounts] = useState([]);
   const [balances, setBalances] = useState({});
@@ -116,14 +116,14 @@ export default function Cuentas() {
   const totalARS = accounts.reduce((sum, acc) => {
     const bal = balances[acc.id] || 0;
     if (acc.moneda === 'ARS') return sum + bal;
-    if (acc.moneda === 'USD' && dolarBlue?.venta) return sum + bal * dolarBlue.venta;
+    if (acc.moneda === 'USD' && dolarVenta) return sum + bal * dolarVenta;
     return sum;
   }, 0);
 
   const totalUSD = accounts.reduce((sum, acc) => {
     const bal = balances[acc.id] || 0;
     if (acc.moneda === 'USD') return sum + bal;
-    if (acc.moneda === 'ARS' && dolarBlue?.venta) return sum + bal / dolarBlue.venta;
+    if (acc.moneda === 'ARS' && dolarVenta) return sum + bal / dolarVenta;
     return sum;
   }, 0);
 

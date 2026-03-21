@@ -1,17 +1,22 @@
 import { Outlet, Navigate, NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useState } from 'react';
-import { LayoutDashboard, ArrowLeftRight, Wallet, Target, TrendingUp, RefreshCw, Settings, User, LogOut, Menu, ChevronLeft } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, Wallet, Target, TrendingUp, RefreshCw, BarChart3, Settings, User, LogOut, Menu, ChevronLeft, Bell } from 'lucide-react';
 import Skeleton from '../ui/Skeleton';
-import useDolarBlue from '../../hooks/useDolarBlue';
+import useDolarRate from '../../hooks/useDolarBlue';
+import usePriceAlerts from '../../hooks/usePriceAlerts';
+import NotificationBell from './NotificationBell';
+
 
 export default function AppLayout() {
   const { user, profile, loading, signOut } = useAuth();
+  usePriceAlerts(); // Activate background checks
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     return localStorage.getItem('auri_sidebar_collapsed') === 'true';
   });
   
-  const { dolarBlue, loading: dolarLoading } = useDolarBlue();
+  const { compra, venta, nombre: dolarNombre, loading: dolarLoading } = useDolarRate(profile?.tipo_cambio_pref || 'oficial');
 
   const toggleSidebar = () => {
     const newState = !isSidebarCollapsed;
@@ -37,7 +42,10 @@ export default function AppLayout() {
     { name: 'Cuentas', path: '/cuentas', icon: <Wallet size={20} /> },
     { name: 'Metas', path: '/metas', icon: <Target size={20} /> },
     { name: 'Inversiones', path: '/inversiones', icon: <TrendingUp size={20} /> },
+    { name: 'Alertas', path: '/alertas', icon: <Bell size={20} /> },
     { name: 'Recurrentes', path: '/recurrentes', icon: <RefreshCw size={20} /> },
+
+    { name: 'Informes', path: '/informes', icon: <BarChart3 size={20} /> },
   ];
 
   const bottomNavItems = [
@@ -81,32 +89,45 @@ export default function AppLayout() {
 
         {/* Dolar Widget */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'var(--color-surface-2)', padding: '6px 12px', borderRadius: '20px', fontSize: '0.85rem' }}>
-          <span style={{ color: 'var(--color-text-muted)' }}>Dólar Blue:</span>
+          <span style={{ color: 'var(--color-text-muted)' }}>{dolarNombre}:</span>
           {dolarLoading ? (
             <Skeleton width="80px" height="16px" borderRadius="4px" />
-          ) : dolarBlue ? (
+          ) : venta ? (
             <div style={{ display: 'flex', gap: '8px', fontWeight: 600 }}>
-              <span style={{ color: 'var(--color-success)' }}>{dolarBlue.compra}</span>
+              <span style={{ color: 'var(--color-success)' }}>{compra}</span>
               <span style={{ color: 'var(--color-text-muted)' }}>/</span>
-              <span style={{ color: 'var(--color-danger)' }}>{dolarBlue.venta}</span>
+              <span style={{ color: 'var(--color-danger)' }}>{venta}</span>
             </div>
           ) : (
             <span style={{ color: 'var(--color-text-muted)' }}>-- / --</span>
           )}
         </div>
 
-        {/* User Info / Avatar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ 
+        {/* User Info / Avatar / Notifications */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <NotificationBell />
+          
+          <NavLink to="/perfil" style={{ 
             width: '36px', height: '36px', 
             borderRadius: '50%', 
             backgroundColor: 'var(--color-gold)', 
             color: '#000',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontWeight: 700, fontSize: '1rem'
-          }}>
-            {profile?.nombre ? profile.nombre.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
-          </div>
+            fontWeight: 700, fontSize: '1rem',
+            overflow: 'hidden',
+            textDecoration: 'none',
+            border: '2px solid transparent',
+            transition: 'border-color 0.2s'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--color-gold)'}
+          onMouseLeave={(e) => e.currentTarget.style.borderColor = 'transparent'}
+          >
+            {profile?.avatar_url ? (
+              <img src={profile.avatar_url} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              profile?.nombre ? profile.nombre.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()
+            )}
+          </NavLink>
         </div>
       </header>
 

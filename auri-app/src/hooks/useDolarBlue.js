@@ -9,10 +9,10 @@ const DOLAR_ENDPOINTS = {
 
 /**
  * Hook reutilizable para obtener cotización del dólar.
- * @param {string} tipo - 'blue' | 'oficial' | 'mep' | 'ccl' (default: 'blue')
+ * @param {string} tipo - 'oficial' (Banco Nación) | 'blue' | 'mep' | 'ccl' (default: 'oficial')
  * @returns {{ compra, venta, nombre, loading, error, refetch }}
  */
-export default function useDolarRate(tipo = 'blue') {
+export default function useDolarRate(tipo = 'oficial') {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -43,7 +43,7 @@ export default function useDolarRate(tipo = 'blue') {
   return {
     compra: data?.compra || null,
     venta: data?.venta || null,
-    nombre: data?.nombre || tipo,
+    nombre: tipo === 'oficial' ? 'Banco Nación' : (data?.nombre || tipo),
     loading,
     error,
     refetch: fetchDolar,
