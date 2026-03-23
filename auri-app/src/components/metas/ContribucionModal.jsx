@@ -31,6 +31,7 @@ export default function ContribucionModal({ isOpen, onClose, meta, onSuccess }) 
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [nota, setNota] = useState('');
   const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
+  const [descontarSaldo, setDescontarSaldo] = useState(true);
 
   // Cálculo sugerido
   const sugerido = (() => {
@@ -48,6 +49,7 @@ export default function ContribucionModal({ isOpen, onClose, meta, onSuccess }) 
       setMonto('');
       setNota('');
       setIsSuccessModalOpen(false);
+      setDescontarSaldo(true);
     }
   }, [isOpen]);
 
@@ -94,29 +96,34 @@ export default function ContribucionModal({ isOpen, onClose, meta, onSuccess }) 
     try {
       const categoryId = await getOrCreateGoalCategory();
 
-      // 1. Transacción
-      const { data: tx, error: txError } = await supabase.from('transactions').insert([{
-        user_id: user.id,
-        account_id: selectedAccountId,
-        category_id: categoryId,
-        monto: amountNum,
-        moneda: account.moneda,
-        tipo: 'egreso',
-        fecha: fecha,
-        descripcion: `Contribución: ${meta.nombre}`,
-        savings_goal_id: meta.id,
-        tipo_cambio: account.moneda === 'USD' || meta.moneda === 'USD' ? dv : 1,
-        notas: nota
-      }]).select('id').single();
+      let txId = null;
 
-      if (txError) throw txError;
+      // 1. Transacción
+      if (descontarSaldo) {
+        const { data: tx, error: txError } = await supabase.from('transactions').insert([{
+          user_id: user.id,
+          account_id: selectedAccountId,
+          category_id: categoryId,
+          monto: amountNum,
+          moneda: account.moneda,
+          tipo: 'egreso',
+          fecha: fecha,
+          descripcion: `Contribución: ${meta.nombre}`,
+          savings_goal_id: meta.id,
+          tipo_cambio: account.moneda === 'USD' || meta.moneda === 'USD' ? dv : 1,
+          notas: nota
+        }]).select('id').single();
+
+        if (txError) throw txError;
+        txId = tx.id;
+      }
 
       // 2. goal_contributions
       const { error: contribError } = await supabase.from('goal_contributions').insert([{
         user_id: user.id,
         goal_id: meta.id,
         account_id: selectedAccountId,
-        transaction_id: tx.id,
+        transaction_id: txId,
         monto: amountNum,
         fecha: fecha,
         nota: nota
@@ -161,7 +168,7 @@ export default function ContribucionModal({ isOpen, onClose, meta, onSuccess }) 
         position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
       }}>
-        <div className="card" style={{ width: '100%', maxWidth: '480px', padding: '0', overflow: 'hidden' }}>
+        <div className="card" style={{ width: '100%', maxWidth: '480px', padding: '0', overflow: 'visible' }}>
           <div style={{ padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.2rem', fontWeight: 600 }}>
               Contribuir a Meta
@@ -200,6 +207,11 @@ export default function ContribucionModal({ isOpen, onClose, meta, onSuccess }) 
                   <label className="label">Nota (opcional)</label>
                   <input placeholder="Nota..." className="input" value={nota} onChange={e => setNota(e.target.value)} />
                 </div>
+             </div>
+
+             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0 8px 0', userSelect: 'none' }}>
+                <input type="checkbox" id="descontar" checked={descontarSaldo} onChange={e => setDescontarSaldo(e.target.checked)} style={{ cursor: 'pointer', accentColor: 'var(--color-gold)' }} />
+                <label htmlFor="descontar" style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', cursor: 'pointer' }}>Descontar saldo de la cuenta (crear transacción)</label>
              </div>
 
              <div style={{ display: 'flex', gap: '12px', marginTop: '12px' }}>

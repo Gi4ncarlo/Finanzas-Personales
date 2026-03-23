@@ -102,6 +102,7 @@ export default function Dashboard() {
 
   // Cálculo de Saldo Total (basado en cuentas + todas las transacciones hasta la fecha)
   const [saldoTotal, setSaldoTotal] = useState({ ars: 0, usd: 0 });
+  const [inversionesTotalUSD, setInversionesTotalUSD] = useState(0); // Aportado por InversionesWidget
   const [lastTxns, setLastTxns] = useState([]);
   const [hasData, setHasData] = useState(false);
   const [recurrentes, setRecurrentes] = useState([]);
@@ -212,10 +213,10 @@ export default function Dashboard() {
         <>
           {/* Summary Cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px' }}>
-            <DashboardCard title="💰 Saldo Total" value={saldoTotal.ars} sub={formatUSD(saldoTotal.usd)} color="var(--color-gold)" loading={loadingSummary} />
+            <DashboardCard title="💎 Patrimonio Neto" value={saldoTotal.ars + (inversionesTotalUSD * (dolarVenta || 1))} sub={formatUSD(saldoTotal.usd + inversionesTotalUSD)} color="var(--color-gold)" loading={loadingSummary} />
+            <DashboardCard title="🏦 Saldo Cuentas" value={saldoTotal.ars} sub={formatUSD(saldoTotal.usd)} color="var(--color-text-muted)" loading={loadingSummary} />
             <DashboardCard title="📈 Ingresos del Mes" value={summary?.ingresos} sub2={`${summary?.count_ingresos || 0} transacciones`} color="var(--color-success)" loading={loadingSummary} />
             <DashboardCard title="📉 Egresos del Mes" value={summary?.egresos} sub2={`${summary?.count_egresos || 0} txs ${summary?.automaticos > 0 ? `· ${formatARS(summary.automaticos)} auto` : ''}`} color="var(--color-danger)" loading={loadingSummary} />
-            <DashboardCard title="⚖️ Balance del Mes" value={summary ? (summary.ingresos - summary.egresos) : 0} sub={summary?.ingresos >= summary?.egresos ? '✅ Superávit' : '🔴 Déficit'} color={summary?.ingresos >= summary?.egresos ? 'var(--color-success)' : 'var(--color-danger)'} loading={loadingSummary} />
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(300px, 1.25fr)', gap: '24px' }}>
@@ -233,7 +234,7 @@ export default function Dashboard() {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
             <RecurrentesWidget />
-            <InversionesWidget />
+            <InversionesWidget onUpdateTotal={(v) => setInversionesTotalUSD(v)} />
             <MetasWidget />
 
             <div className="card" style={{ padding: '24px' }}>

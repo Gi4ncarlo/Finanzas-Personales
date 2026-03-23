@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ToastProvider } from './context/ToastContext';
+import { ConfirmProvider } from './context/ConfirmContext';
 
 // Layouts
 import AuthLayout from './components/layout/AuthLayout';
@@ -32,7 +33,8 @@ function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <Router>
+        <ConfirmProvider>
+          <Router>
           <Routes>
             {/* Public / Auth Routes */}
             <Route element={<AuthLayout />}>
@@ -67,6 +69,7 @@ function App() {
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </Router>
+        </ConfirmProvider>
       </ToastProvider>
     </AuthProvider>
   );

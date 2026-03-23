@@ -83,7 +83,7 @@ export default function Inversiones() {
         .from('investments')
         .select('*, investment_purchases(*)')
         .eq('user_id', userId)
-        .order('activo_symbol');
+        .order('activo_simbolo');
       if (error) throw error;
       return data;
     }
@@ -114,12 +114,16 @@ export default function Inversiones() {
       if (q) {
         // useInvestmentPrices nos devuelve precio_ars o precio (usd)
         if (pos.tipo === 'crypto') {
-          precioActual = q.precio;
-          var24h = q.variacion24h;
+          precioActual = q.precio || (pos.moneda_compra === 'USD' ? pos.precio_compra : pos.precio_compra / dolarVenta);
+          var24h = q.variacion24h || 0;
         } else {
-          precioActual = q.precio_ars / dolarVenta;
-          var24h = q.variacion24h;
+          precioActual = (q.precio_ars ? q.precio_ars / dolarVenta : (pos.moneda_compra === 'USD' ? pos.precio_compra : pos.precio_compra / dolarVenta));
+          var24h = q.variacion24h || 0;
         }
+      } else {
+        // Fallback al precio de compra original si la API de precios falla (Ej: rate limits)
+        precioActual = pos.moneda_compra === 'USD' ? pos.precio_compra : (pos.precio_compra / dolarVenta);
+        var24h = 0;
       }
 
 

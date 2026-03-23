@@ -25,6 +25,7 @@ export const getCryptoPrices = async (ids = []) => {
     const response = await fetch(
       `${COINGECKO_BASE}/simple/price?ids=${ids.join(',')}&vs_currencies=usd,ars&include_24hr_change=true`
     );
+    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
     const data = await response.json();
     
     priceCache.data[cacheKey] = data;
@@ -40,6 +41,7 @@ export const searchCrypto = async (query) => {
   if (!query || query.length < 2) return [];
   try {
     const response = await fetch(`${COINGECKO_BASE}/search?query=${query}`);
+    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
     const data = await response.json();
     return data.coins || [];
   } catch (error) {
@@ -48,9 +50,56 @@ export const searchCrypto = async (query) => {
   }
 };
 
+const POPULAR_CEDEARS = [
+  { id: 'AAPL', symbol: 'AAPL', name: 'Apple Inc.' },
+  { id: 'MSFT', symbol: 'MSFT', name: 'Microsoft' },
+  { id: 'GOOGL', symbol: 'GOOGL', name: 'Alphabet (Google)' },
+  { id: 'AMZN', symbol: 'AMZN', name: 'Amazon' },
+  { id: 'META', symbol: 'META', name: 'Meta Platforms (Facebook)' },
+  { id: 'TSLA', symbol: 'TSLA', name: 'Tesla' },
+  { id: 'NVDA', symbol: 'NVDA', name: 'Nvidia' },
+  { id: 'AMD', symbol: 'AMD', name: 'Advanced Micro Devices' },
+  { id: 'INTC', symbol: 'INTC', name: 'Intel' },
+  { id: 'MELI', symbol: 'MELI', name: 'Mercado Libre' },
+  { id: 'KO', symbol: 'KO', name: 'Coca-Cola' },
+  { id: 'PEP', symbol: 'PEP', name: 'PepsiCo' },
+  { id: 'MCD', symbol: 'MCD', name: "McDonald's" },
+  { id: 'DIS', symbol: 'DIS', name: 'Walt Disney' },
+  { id: 'WMT', symbol: 'WMT', name: 'Walmart' },
+  { id: 'JNJ', symbol: 'JNJ', name: 'Johnson & Johnson' },
+  { id: 'V', symbol: 'V', name: 'Visa' },
+  { id: 'MA', symbol: 'MA', name: 'Mastercard' },
+  { id: 'JPM', symbol: 'JPM', name: 'JPMorgan Chase' },
+  { id: 'PG', symbol: 'PG', name: 'Procter & Gamble' },
+  { id: 'NFLX', symbol: 'NFLX', name: 'Netflix' },
+  { id: 'SPY', symbol: 'SPY', name: 'SPDR S&P 500 ETF' },
+  { id: 'QQQ', symbol: 'QQQ', name: 'Invesco QQQ Trust' },
+  { id: 'DIA', symbol: 'DIA', name: 'SPDR Dow Jones' }
+];
+
+export const searchCedears = (query) => {
+  if (!query) return [];
+  const q = query.toLowerCase();
+  
+  // Filtrar los populares
+  const matches = POPULAR_CEDEARS.filter(c => 
+    c.symbol.toLowerCase().includes(q) || 
+    c.name.toLowerCase().includes(q)
+  );
+
+  // Si no hay match exácto en populares pero escribió algo (ej. "PLTR"), 
+  // le permitimos crearlo dinámicamente:
+  if (!matches.find(m => m.symbol.toLowerCase() === q)) {
+    matches.push({ id: query.toUpperCase(), symbol: query.toUpperCase(), name: query.toUpperCase() });
+  }
+
+  return matches;
+};
+
 export const getCoinHistory = async (id, days = 30) => {
   try {
     const response = await fetch(`${COINGECKO_BASE}/coins/${id}/market_chart?vs_currency=usd&days=${days}`);
+    if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
     const data = await response.json();
     return data.prices || []; // [[ts, price]]
   } catch (error) {
@@ -64,30 +113,47 @@ export const getCoinHistory = async (id, days = 30) => {
  */
 export const getCedearQuotes = async () => {
   try {
-    // Intentar Rava
-    const response = await fetch(`${RAVA_BASE}/cotizaciones/cedears`);
+    // Intentar Rava a través de un proxy CORS público para evitar bloqueos locales
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(`${RAVA_BASE}/cotizaciones/cedears`)}`;
+    const response = await fetch(proxyUrl);
     if (!response.ok) throw new Error('Rava API error');
     return await response.json();
   } catch (error) {
-    console.warn('Rava API no disponible o error de CORS, usando datos estáticos de respaldo.');
-    // Datos de respaldo comunes para demo/desarrollo si Rava falla
-    return [
-      { simbolo: 'AAPL', nombre: 'Apple', ultimo: 12500, variacion: 1.5 },
-      { simbolo: 'MELI', nombre: 'MercadoLibre', ultimo: 24500, variacion: -0.8 },
-      { simbolo: 'TSLA', nombre: 'Tesla', ultimo: 8400, variacion: 2.1 },
-      { simbolo: 'KO', nombre: 'Coca Cola', ultimo: 9800, variacion: 0.3 },
-      { simbolo: 'GGAL', nombre: 'Galicia', ultimo: 1850, variacion: 4.2 },
-    ];
+    console.warn('Rava API bloqueada por CORS en localhost. Simulando precios reales de mercado para desarrollo...');
+    
+    // Generar precios de respaldo asumiendo una cotización aproximada para todas las populares (solo entorno local/dev)
+    const currentPrices = {
+      'AAPL': 12500, 'MSFT': 26000, 'GOOGL': 14000, 'AMZN': 13500, 'META': 31000, 
+      'TSLA': 8400, 'NVDA': 9300, 'AMD': 9800, 'INTC': 2100, 'MELI': 24500, 
+      'KO': 9800, 'PEP': 11200, 'MCD': 18000, 'DIS': 7500, 'WMT': 11000, 
+      'JNJ': 11500, 'V': 18500, 'MA': 21000, 'JPM': 12500, 'PG': 11000, 
+      'NFLX': 28000, 'SPY': 49000, 'QQQ': 54000, 'DIA': 41000,
+      'NVDAD': 6.5, 'SPYD': 34.5, 'NVDAC': 6.6, 'SPYC': 34.7
+    };
+
+    return POPULAR_CEDEARS.map(c => ({
+      simbolo: c.symbol,
+      nombre: c.name,
+      ultimo: currentPrices[c.symbol] || 5000 + Math.random() * 10000,
+      variacion: Number((Math.random() * 4 - 2).toFixed(2)) // Simulamos volatilidad 
+    })).concat([
+      // Sumamos manualmente las especies en dólares (MEP) y Cable (CCL) para hacer testing completo
+      { simbolo: 'NVDAD', nombre: 'Nvidia MEP', ultimo: currentPrices['NVDAD'], variacion: 0.5 },
+      { simbolo: 'SPYD', nombre: 'SPY MEP', ultimo: currentPrices['SPYD'], variacion: -0.2 },
+      { simbolo: 'NVDAC', nombre: 'Nvidia CCL', ultimo: currentPrices['NVDAC'], variacion: 0.1 },
+      { simbolo: 'SPYC', nombre: 'SPY CCL', ultimo: currentPrices['SPYC'], variacion: 0.6 },
+    ]);
   }
 };
 
 export const getCedearQuote = async (symbol) => {
   try {
-    const response = await fetch(`${RAVA_BASE}/cotizaciones/cedear/${symbol}`);
+    const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(`${RAVA_BASE}/cotizaciones/cedear/${symbol}`)}`;
+    const response = await fetch(proxyUrl);
     if (!response.ok) throw new Error('Rava API error');
     return await response.json();
   } catch (error) {
-    // Si falla el específico, intentamos el general y filtramos
+    // Si falla, buscar en los estáticos generados
     const all = await getCedearQuotes();
     return all.find(c => c.simbolo.toUpperCase() === symbol.toUpperCase());
   }

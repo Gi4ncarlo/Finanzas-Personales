@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { formatARS, formatUSD } from '../utils/currency';
 import Skeleton from '../components/ui/Skeleton';
 import CuentaModal from '../components/cuentas/CuentaModal';
@@ -19,6 +20,7 @@ export default function CuentaDetalle() {
   const { id } = useParams();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
 
   const [account, setAccount] = useState(null);
@@ -97,7 +99,8 @@ export default function CuentaDetalle() {
     const msg = count > 0
       ? `Esta cuenta tiene ${count} transacción(es). ¿Seguro que querés eliminarla?`
       : '¿Seguro que querés eliminar esta cuenta?';
-    if (!window.confirm(msg)) return;
+    const ok = await confirm(msg);
+    if (!ok) return;
 
     const { error } = await supabase.from('accounts').delete().eq('id', id);
     if (error) {

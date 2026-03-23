@@ -170,7 +170,7 @@ export default function MetaModal({ isOpen, onClose, meta, onSuccess }) {
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px'
     }}>
-      <div className="card" style={{ width: '100%', maxWidth: '550px', padding: '0', overflow: 'hidden', maxHeight: '90vh', overflowY: 'auto' }}>
+      <div className="card" style={{ width: '100%', maxWidth: '550px', padding: '0', overflow: 'visible', maxHeight: '90vh', overflowY: 'auto' }}>
         <div style={{ padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', sticky: 'top', backgroundColor: 'var(--color-surface)', zIndex: 10 }}>
           <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.2rem', fontWeight: 600 }}>
             {meta ? 'Editar Meta' : 'Nueva Meta'}

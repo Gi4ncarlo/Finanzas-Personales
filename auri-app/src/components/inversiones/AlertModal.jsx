@@ -2,12 +2,14 @@ import { useState } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
+import { useConfirm } from '../../context/ConfirmContext';
 import { X, Bell, Info } from 'lucide-react';
 import { formatUSD, formatARS } from '../../utils/currency';
 
 export default function AlertModal({ isOpen, onClose, asset, currentPrice, onSave }) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const [targetPrice, setTargetPrice] = useState('');
   const [direction, setDirection] = useState('arriba'); // 'arriba' | 'abajo'
   const [currency, setCurrency] = useState('USD');
@@ -33,7 +35,8 @@ export default function AlertModal({ isOpen, onClose, asset, currentPrice, onSav
         .eq('disparada', false);
 
       if (existing?.length > 0) {
-        if (!window.confirm(`Ya tenés una alerta para que ${asset.activo_simbolo} ${direction === 'arriba' ? 'suba' : 'baje'}. ¿Querés reemplazarla?`)) {
+        const ok = await confirm(`Ya tenés una alerta para que ${asset.activo_simbolo} ${direction === 'arriba' ? 'suba' : 'baje'}. ¿Querés reemplazarla?`);
+        if (!ok) {
             setLoading(false);
             return;
         }

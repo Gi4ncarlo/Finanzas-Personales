@@ -22,7 +22,6 @@ const INITIAL_FORM = {
   dia_ejecucion: '',
   dia_semana: '1',
   mes_ejecucion: '1',
-  descripcion: '',
   activo: true,
 };
 
@@ -63,7 +62,6 @@ export default function RecurrenteModal({ isOpen, onClose, onSave, onDelete, rec
           dia_ejecucion: String(recurrente.dia_ejecucion || ''),
           dia_semana: String(recurrente.dia_semana ?? '1'),
           mes_ejecucion: String(recurrente.mes_ejecucion || '1'),
-          descripcion: recurrente.descripcion || '',
           activo: recurrente.activo !== false,
         });
       } else {
@@ -122,7 +120,6 @@ export default function RecurrenteModal({ isOpen, onClose, onSave, onDelete, rec
         dia_ejecucion: form.frecuencia !== 'semanal' ? parseInt(form.dia_ejecucion) || null : null,
         dia_semana: form.frecuencia === 'semanal' ? parseInt(form.dia_semana) : null,
         mes_ejecucion: form.frecuencia === 'anual' ? parseInt(form.mes_ejecucion) : null,
-        descripcion: form.descripcion.trim() || null,
         activo: form.activo,
       };
 
@@ -283,11 +280,6 @@ export default function RecurrenteModal({ isOpen, onClose, onSave, onDelete, rec
             )}
           </div>
 
-          {/* Descripción */}
-          <div>
-            <label style={{ display: 'block', fontWeight: 500, marginBottom: '8px', fontSize: '0.9rem' }}>Descripción (opcional)</label>
-            <textarea className="input" rows={2} value={form.descripcion} onChange={e => set('descripcion', e.target.value)} placeholder="Notas adicionales..." style={{ resize: 'vertical' }} />
-          </div>
 
           {/* Toggle Activo */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', backgroundColor: 'var(--color-surface-2)', borderRadius: '10px', border: '1px solid var(--color-border)' }}>

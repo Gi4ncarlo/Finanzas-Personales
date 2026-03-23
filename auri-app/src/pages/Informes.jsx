@@ -3,6 +3,7 @@ import useSWR from 'swr';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { formatARS, formatUSD } from '../utils/currency';
+import useDolarRate from '../hooks/useDolarBlue';
 import { useCountUp } from '../hooks/useCountUp';
 import Skeleton from '../components/ui/Skeleton';
 import { 
@@ -41,6 +42,9 @@ export default function Informes() {
   const [tab, setTab] = useState('summary'); // 'summary' | 'category'| 'account' | 'trends'
   const [periodo, setPeriodo] = useState('esteMes');
   const [viewMode, setViewMode] = useState('bars'); // 'bars' | 'table' para categorías
+  const { venta: dolarVenta } = useDolarRate(profile?.tipo_cambio_pref || 'oficial');
+  const [patrimonioActual, setPatrimonioActual] = useState(0);
+
   const [customRange, setCustomRange] = useState({ 
     start: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
     end: new Date().toISOString().slice(0, 10) 
@@ -113,9 +117,47 @@ export default function Informes() {
     };
   }, [reportData]);
 
+  // Cálculo rápido del Patrimonio Global Independiente del Periodo
+  useEffect(() => {
+    const fetchPatrimonio = async () => {
+      if (!user) return;
+      const { data: accounts } = await supabase.from('accounts').select('id, saldo_inicial, moneda').eq('user_id', user.id);
+      const { data: txns } = await supabase.from('transactions').select('account_id, account_destino_id, tipo, monto, moneda').eq('user_id', user.id);
+      const { data: invs } = await supabase.from('investments').select('cantidad, precio_compra, moneda_compra').eq('user_id', user.id);
+      
+      let totalARS = 0, totalUSD = 0;
+      const bals = {};
+      if (accounts) accounts.forEach(a => bals[a.id] = { balance: a.saldo_inicial || 0, moneda: a.moneda });
+      
+      txns?.forEach(tx => {
+        if (tx.tipo === 'ingreso') { if (bals[tx.account_id]) bals[tx.account_id].balance += Number(tx.monto); }
+        else if (tx.tipo === 'egreso') { if (bals[tx.account_id]) bals[tx.account_id].balance -= Number(tx.monto); }
+        else if (tx.tipo === 'transferencia') {
+          if (bals[tx.account_id]) bals[tx.account_id].balance -= Number(tx.monto);
+          if (tx.account_destino_id && bals[tx.account_destino_id]) bals[tx.account_destino_id].balance += Number(tx.monto);
+        }
+      });
+
+      for (const acc of Object.values(bals)) {
+        if (acc.moneda === 'ARS') totalARS += acc.balance; 
+        else totalUSD += acc.balance;
+      }
+
+      let invTotalUSD = 0;
+      const dv = dolarVenta || 1400;
+      invs?.forEach(i => {
+        invTotalUSD += i.moneda_compra === 'USD' ? (i.cantidad * i.precio_compra) : (i.cantidad * i.precio_compra / dv);
+      });
+
+      setPatrimonioActual(totalARS + (totalUSD * dv) + (invTotalUSD * dv));
+    };
+    fetchPatrimonio();
+  }, [user, dolarVenta]);
+
   const animatedIng = useCountUp(stats.ing);
   const animatedEg = useCountUp(stats.eg);
   const animatedBal = useCountUp(stats.bal);
+  const animatedPat = useCountUp(patrimonioActual);
 
   const tabs = [
     { id: 'summary', label: 'Resumen', icon: <LayoutPanelLeft size={18} /> },
@@ -203,13 +245,13 @@ export default function Informes() {
                   <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '8px' }}>EGRESOS TOTALES</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--color-danger)' }}>{formatARS(animatedEg)}</div>
                 </div>
-                <div className="card" style={{ borderLeft: '4px solid var(--color-gold)' }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '8px' }}>BALANCE NETO</div>
+                <div className="card" style={{ borderLeft: '4px solid var(--color-warning)' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '8px', title: 'Flujo de efectivo del periodo seleccionado (Ingresos - Egresos)' }}>FLUJO DEL PERIODO</div>
                   <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>{formatARS(animatedBal)}</div>
                 </div>
-                <div className="card" style={{ borderLeft: `4px solid ${stats.ratio > 20 ? 'var(--color-success)' : 'var(--color-warning)'}` }}>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '8px' }}>RATIO DE AHORRO</div>
-                  <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>{stats.ratio}%</div>
+                <div className="card" style={{ borderLeft: '4px solid var(--color-gold)' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '8px', title: 'Tu Saldo Total Global + Inversiones' }}>PATRIMONIO NETO</div>
+                  <div style={{ fontSize: '1.75rem', fontWeight: 800 }}>{formatARS(animatedPat)}</div>
                 </div>
               </div>
 
@@ -224,7 +266,7 @@ export default function Informes() {
                       <th style={{ padding: '16px 24px' }}>Mes</th>
                       <th style={{ padding: '16px 24px' }}>Ingresos</th>
                       <th style={{ padding: '16px 24px' }}>Egresos</th>
-                      <th style={{ padding: '16px 24px' }}>Balance</th>
+                      <th style={{ padding: '16px 24px' }}>Flujo</th>
                       <th style={{ padding: '16px 24px' }}>Ahorro %</th>
                     </tr>
                   </thead>

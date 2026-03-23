@@ -12,6 +12,7 @@ import {
   ChevronUp, AlertCircle, Clock, History
 } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import MetaModal from '../components/metas/MetaModal';
 import ContribucionModal from '../components/metas/ContribucionModal';
 
@@ -40,6 +41,7 @@ export default function Metas() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const [showCompleted, setShowCompleted] = useState(false);
   
   // Modales
@@ -81,7 +83,8 @@ export default function Metas() {
   };
 
   const deleteMeta = async (id) => {
-    if (!confirm('¿Estás seguro de eliminar esta meta? Se perderá el seguimiento histórico.')) return;
+    const ok = await confirm('¿Estás seguro de eliminar esta meta? Se perderá el seguimiento histórico.');
+    if (!ok) return;
     const { error } = await supabase.from('savings_goals').delete().eq('id', id);
     if (!error) {
       toast.success('Meta eliminada');
@@ -92,7 +95,8 @@ export default function Metas() {
 
   const toggleCompletada = async (meta) => {
     if (!meta.completada && meta.monto_actual < meta.monto_objetivo) {
-        if (!confirm(`¿Marcar "${meta.nombre}" como completada aunque no llegó al monto objetivo?`)) return;
+        const ok = await confirm(`¿Marcar "${meta.nombre}" como completada aunque no llegó al monto objetivo?`);
+        if (!ok) return;
     }
     const { error } = await supabase.from('savings_goals').update({ 
         completada: !meta.completada,

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useToast } from '../../context/ToastContext';
-import { searchCrypto, getCedearQuote } from '../../services/quotesService';
+import { searchCrypto, getCedearQuote, searchCedears } from '../../services/quotesService';
 import useDolarRate from '../../hooks/useDolarBlue';
 import { formatARS, formatUSD } from '../../utils/currency';
 import { X, Search, Coins, TrendingUp, Calendar, Info, Save } from 'lucide-react';
@@ -25,14 +25,18 @@ export default function InvestmentModal({ isOpen, onClose, onSave, accounts = []
     moneda_compra: 'USD',
     fecha_compra: new Date().toISOString().split('T')[0],
     account_id: '',
+    nominacion: 'ARS',
     notas: ''
   });
 
-  // Buscador de Crypto
+  // Buscador de Crypto y Cedear
   useEffect(() => {
     const handler = setTimeout(async () => {
       if (tipo === 'crypto' && searchQuery.length >= 2) {
         const results = await searchCrypto(searchQuery);
+        setSearchResults(results.slice(0, 5));
+      } else if (tipo === 'cedear' && searchQuery.length >= 1) {
+        const results = searchCedears(searchQuery);
         setSearchResults(results.slice(0, 5));
       } else {
         setSearchResults([]);
@@ -41,24 +45,7 @@ export default function InvestmentModal({ isOpen, onClose, onSave, accounts = []
     return () => clearTimeout(handler);
   }, [searchQuery, tipo]);
 
-  const handleSearchCedear = async () => {
-    if (!searchQuery) return;
-    setLoading(true);
-    const result = await getCedearQuote(searchQuery);
-    if (result) {
-      setSelectedAsset({
-        id: result.simbolo,
-        symbol: result.simbolo,
-        name: result.nombre,
-        thumb: null,
-        current_price_ars: result.ultimo
-      });
-      setFormData({ ...formData, moneda_compra: 'ARS', precio_compra: result.ultimo });
-    } else {
-      toast.error('No se encontró el CEDEAR');
-    }
-    setLoading(false);
-  };
+
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -66,12 +53,15 @@ export default function InvestmentModal({ isOpen, onClose, onSave, accounts = []
     setLoading(true);
 
     try {
+      const suffix = formData.nominacion === 'MEP (D)' ? 'D' : formData.nominacion === 'CCL (C)' ? 'C' : '';
+      const assetSymbol = tipo === 'cedear' ? (selectedAsset.symbol.toUpperCase() + suffix) : selectedAsset.symbol.toUpperCase();
+
       // 1. Verificar si ya existe el activo para este usuario
       const { data: existing } = await supabase
         .from('investments')
         .select('*')
         .eq('user_id', user.id)
-        .eq('activo_simbolo', selectedAsset.symbol.toUpperCase())
+        .eq('activo_simbolo', assetSymbol)
         .maybeSingle();
 
       const nuevaCantidad = Number(formData.cantidad);
@@ -112,7 +102,7 @@ export default function InvestmentModal({ isOpen, onClose, onSave, accounts = []
           .from('investments')
           .insert([{
             user_id: user.id,
-            activo_simbolo: selectedAsset.symbol.toUpperCase(),
+            activo_simbolo: assetSymbol,
             activo_nombre: selectedAsset.name,
             tipo: tipo,
             coingecko_id: selectedAsset.id,
@@ -175,7 +165,7 @@ export default function InvestmentModal({ isOpen, onClose, onSave, accounts = []
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, 
       backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000
     }}>
-      <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '0', overflow: 'hidden' }}>
+      <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '0', overflow: 'visible' }}>
         <div style={{ padding: '20px', borderBottom: '1px solid var(--color-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontWeight: 600, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
              <TrendingUp size={20} color="var(--color-gold)" /> Registrar Inversión
@@ -214,12 +204,9 @@ export default function InvestmentModal({ isOpen, onClose, onSave, accounts = []
                   onChange={e => setSearchQuery(e.target.value)}
                 />
               </div>
-              {tipo === 'cedear' && (
-                <button type="button" className="btn btn-secondary" onClick={handleSearchCedear}>Buscar</button>
-              )}
             </div>
 
-            {/* Resultados de búsqueda (Solo Crypto) */}
+            {/* Resultados de búsqueda */}
             {searchResults.length > 0 && (
               <div style={{
                 position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
@@ -227,10 +214,26 @@ export default function InvestmentModal({ isOpen, onClose, onSave, accounts = []
                 borderRadius: '8px', marginTop: '4px', overflow: 'hidden', boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
               }}>
                 {searchResults.map(s => (
-                  <div key={s.id} onClick={() => { setSelectedAsset(s); setSearchResults([]); setSearchQuery(s.name); }} style={{
+                  <div key={s.id} onClick={async () => { 
+                    setSelectedAsset(s); 
+                    setSearchResults([]); 
+                    setSearchQuery(s.name); 
+
+                    if (tipo === 'cedear') {
+                      setLoading(true);
+                      const result = await getCedearQuote(s.symbol);
+                      if (result && result.ultimo) {
+                        setFormData(prev => ({ ...prev, moneda_compra: 'ARS', precio_compra: result.ultimo }));
+                      } else {
+                        setFormData(prev => ({ ...prev, moneda_compra: 'ARS', precio_compra: '' }));
+                        toast.success('Cargá el precio manualmente.');
+                      }
+                      setLoading(false);
+                    }
+                  }} style={{
                     padding: '12px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '12px', transition: 'background 0.2s'
                   }} className="search-item">
-                    <img src={s.thumb} alt="" style={{ width: '20px', height: '20px' }} />
+                    {s.thumb && <img src={s.thumb} alt="" style={{ width: '20px', height: '20px' }} />}
                     <span style={{ fontWeight: 600 }}>{s.name}</span>
                     <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>{s.symbol}</span>
                   </div>
@@ -247,6 +250,45 @@ export default function InvestmentModal({ isOpen, onClose, onSave, accounts = []
                 <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{selectedAsset.symbol.toUpperCase()}</div>
               </div>
               <X size={16} style={{ cursor: 'pointer' }} onClick={() => setSelectedAsset(null)} />
+            </div>
+          )}
+
+          {tipo === 'cedear' && selectedAsset && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label className="label">Nominación / Especie</label>
+              <div style={{ display: 'flex', gap: '8px', backgroundColor: 'var(--color-surface-2)', padding: '4px', borderRadius: '10px' }}>
+                {['ARS', 'MEP (D)', 'CCL (C)'].map(nom => (
+                  <button key={nom} type="button" onClick={async () => {
+                    const mon = nom === 'ARS' ? 'ARS' : 'USD';
+                    const suffix = nom === 'MEP (D)' ? 'D' : nom === 'CCL (C)' ? 'C' : '';
+                    const ticker = selectedAsset.symbol.toUpperCase() + suffix;
+                    
+                    setFormData(prev => ({ ...prev, nominacion: nom, moneda_compra: mon }));
+                    
+                    setLoading(true);
+                    try {
+                      const result = await getCedearQuote(ticker);
+                      if (result && result.ultimo) {
+                        setFormData(prev => ({ ...prev, precio_compra: result.ultimo }));
+                      } else {
+                        setFormData(prev => ({ ...prev, precio_compra: '' }));
+                        toast.success('Cargá el precio manualmente.');
+                      }
+                    } catch (e) {
+                      setFormData(prev => ({ ...prev, precio_compra: '' }));
+                      toast.success('Cargá el precio manualmente.');
+                    }
+                    setLoading(false);
+                  }} style={{
+                    flex: 1, padding: '8px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                    backgroundColor: formData.nominacion === nom ? 'var(--color-surface)' : 'transparent',
+                    color: formData.nominacion === nom ? 'var(--color-gold)' : 'var(--color-text-muted)',
+                    fontSize: '0.8rem', fontWeight: 600, transition: 'all 0.2s'
+                  }}>
+                    {nom}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { formatARS, formatUSD } from '../utils/currency';
 import { exportToCSV } from '../utils/csv';
 import Skeleton from '../components/ui/Skeleton';
@@ -18,6 +19,7 @@ const PAGE_SIZE = 20;
 export default function Transacciones() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [transactions, setTransactions] = useState([]);
@@ -158,7 +160,7 @@ export default function Transacciones() {
     // Check if it's a transfer with a par
     const tx = transactions.find(t => t.id === id);
     if (tx?.transferencia_par_id) {
-      const choice = window.confirm(
+      const choice = await confirm(
         '¿Eliminar toda la transferencia (ambas partes)?\n\nAceptar = Eliminar toda la transferencia\nCancelar = No eliminar'
       );
       if (!choice) return;
@@ -171,7 +173,8 @@ export default function Transacciones() {
         fetchTransactions();
       }
     } else {
-      if (!window.confirm('¿Eliminar esta transacción? Esta acción no se puede deshacer.')) return;
+      const ok = await confirm('¿Eliminar esta transacción? Esta acción no se puede deshacer.');
+      if (!ok) return;
       const { error } = await supabase.from('transactions').delete().eq('id', id);
       if (error) {
         toast.error('No se pudo eliminar.');

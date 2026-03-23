@@ -4,6 +4,7 @@ import useSWR from 'swr';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { formatARS } from '../utils/currency';
 import Skeleton from '../components/ui/Skeleton';
 import { 
@@ -57,6 +58,7 @@ export default function MetaDetalle() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   
   const [isContribModalOpen, setIsContribModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -131,7 +133,8 @@ export default function MetaDetalle() {
   const estado = useMemo(() => meta ? determinarEstadoMeta(meta, contribs) : 'en_camino', [meta, contribs]);
 
   const handleDeleteMeta = async () => {
-    if (!confirm('¿Eliminar esta meta? Se perderán todas las contribuciones asociadas.')) return;
+    const ok = await confirm('¿Eliminar esta meta? Se perderán todas las contribuciones asociadas.');
+    if (!ok) return;
     const { error } = await supabase.from('savings_goals').delete().eq('id', meta.id);
     if (!error) {
         toast.success('Meta eliminada');
@@ -294,7 +297,8 @@ export default function MetaDetalle() {
                                 </td>
                                 <td style={{ padding: '16px 24px', textAlign: 'right' }}>
                                     <button className="btn-icon" style={{ color: 'var(--color-danger)' }} onClick={async () => {
-                                         if (!confirm('¿Eliminar contribución?')) return;
+                                         const ok = await confirm('¿Eliminar contribución?');
+                                         if (!ok) return;
                                          if (c.transaction_id) await supabase.from('transactions').delete().eq('id', c.transaction_id);
                                          await supabase.from('goal_contributions').delete().eq('id', c.id);
                                          await supabase.from('savings_goals').update({ monto_actual: Number(meta.monto_actual) - Number(c.monto) }).eq('id', meta.id);

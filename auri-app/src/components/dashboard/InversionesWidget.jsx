@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import useSWR from 'swr';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
@@ -9,7 +9,7 @@ import { getCryptoPrices, getCedearQuotes } from '../../services/quotesService';
 import Skeleton from '../ui/Skeleton';
 import { TrendingUp, ArrowRight, ArrowUpRight, ArrowDownLeft, Wallet } from 'lucide-react';
 
-export default function InversionesWidget() {
+export default function InversionesWidget({ onUpdateTotal }) {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
   const { venta: dolarVenta } = useDolarRate(profile?.tipo_cambio_pref || 'oficial');
@@ -53,6 +53,11 @@ export default function InversionesWidget() {
         if (quote) precioActual = quote.ultimo / dolarVenta;
       }
 
+      // Si fallan quotes, fallback a precio compra
+      if (!precioActual || precioActual <= 0) {
+        precioActual = pos.moneda_compra === 'USD' ? pos.precio_compra : (pos.precio_compra / dolarVenta);
+      }
+
       totalActualUSD += pos.cantidad * precioActual;
       totalInvertidoUSD += pos.moneda_compra === 'USD' ? (pos.cantidad * pos.precio_compra) : (pos.cantidad * pos.precio_compra / dolarVenta);
     });
@@ -62,6 +67,13 @@ export default function InversionesWidget() {
 
     return { totalUSD: totalActualUSD, profitUSD, profitPorc };
   }, [positions, quotes, cedears, dolarVenta]);
+
+  // Hook effect para avisar al padre (Dashboard) sobre el nuevo total
+  useEffect(() => {
+    if (onUpdateTotal && resumen.totalUSD !== undefined) {
+      onUpdateTotal(resumen.totalUSD);
+    }
+  }, [resumen.totalUSD, onUpdateTotal]);
 
   if (loadingPositions || loadingQuotes || loadingCedears) return <Skeleton height="180px" />;
 

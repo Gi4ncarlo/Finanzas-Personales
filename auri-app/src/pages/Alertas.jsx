@@ -3,6 +3,7 @@ import useSWR from 'swr';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { formatUSD, formatARS } from '../utils/currency';
 import Skeleton from '../components/ui/Skeleton';
 import { Bell, Trash2, ArrowUpRight, ArrowDownLeft, Clock, Info, Plus } from 'lucide-react';
@@ -10,6 +11,7 @@ import { Bell, Trash2, ArrowUpRight, ArrowDownLeft, Clock, Info, Plus } from 'lu
 export default function Alertas() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
 
   // 1. Cargar todas las alertas
   const { data: alerts, mutate, isLoading } = useSWR(
@@ -29,7 +31,8 @@ export default function Alertas() {
   const triggeredAlerts = alerts?.filter(a => a.disparada) || [];
 
   const deleteAlert = async (id) => {
-    if (!window.confirm('¿Eliminar esta alerta?')) return;
+    const ok = await confirm('¿Eliminar esta alerta?');
+    if (!ok) return;
     const { error } = await supabase.from('price_alerts').delete().eq('id', id);
     if (!error) {
       toast.success('Alerta eliminada');

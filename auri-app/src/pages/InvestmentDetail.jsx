@@ -4,6 +4,7 @@ import useSWR from 'swr';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import useDolarRate from '../hooks/useDolarBlue';
 import { formatARS, formatUSD } from '../utils/currency';
 import { getCoinHistory, getCryptoPrices, getCedearQuotes } from '../services/quotesService';
@@ -21,6 +22,7 @@ export default function InvestmentDetail() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const { venta: dolarVenta } = useDolarRate(profile?.tipo_cambio_pref);
 
   const [days, setDays] = useState(30);
@@ -79,7 +81,8 @@ export default function InvestmentDetail() {
   }, [history]);
 
   const handleDelete = async () => {
-    if (!window.confirm('¿Estás seguro de eliminar esta posición?')) return;
+    const ok = await confirm('¿Estás seguro de eliminar esta posición?');
+    if (!ok) return;
     const { error } = await supabase.from('investments').delete().eq('id', id);
     if (error) return toast.error('Error al eliminar');
     toast.success('Posición eliminada');

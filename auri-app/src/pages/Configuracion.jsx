@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import Skeleton from '../components/ui/Skeleton';
 import { Trash2, Plus, Tag } from 'lucide-react';
 
@@ -56,6 +57,7 @@ export default function Configuracion() {
 function CategoriesTab({ user, toast }) {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { confirm } = useConfirm();
 
   // Form
   const [nombre, setNombre] = useState('');
@@ -120,7 +122,8 @@ function CategoriesTab({ user, toast }) {
       return;
     }
 
-    if (!window.confirm('¿Seguro que querés eliminar esta categoría? Si tiene transacciones asociadas fallará.')) return;
+    const ok = await confirm('¿Seguro que querés eliminar esta categoría? Si tiene transacciones asociadas fallará.');
+    if (!ok) return;
 
     try {
       const { error } = await supabase

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import useDolarRate from '../hooks/useDolarBlue';
 import { formatARS, formatUSD } from '../utils/currency';
 import Skeleton from '../components/ui/Skeleton';
@@ -19,6 +20,7 @@ const TIPO_LABELS = { banco: 'Banco', efectivo: 'Efectivo', virtual: 'Virtual', 
 export default function Cuentas() {
   const { user, profile } = useAuth();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const navigate = useNavigate();
   const { venta: dolarVenta } = useDolarRate(profile?.tipo_cambio_pref || 'oficial');
 
@@ -97,9 +99,11 @@ export default function Cuentas() {
       .eq('account_id', account.id);
 
     if (count > 0) {
-      if (!window.confirm(`Esta cuenta tiene ${count} transacción(es) asociada(s). ¿Seguro que querés eliminarla? Las transacciones quedarán sin cuenta.`)) return;
+      const ok = await confirm(`Esta cuenta tiene ${count} transacción(es) asociada(s). ¿Seguro que querés eliminarla? Las transacciones quedarán sin cuenta.`);
+      if (!ok) return;
     } else {
-      if (!window.confirm('¿Seguro que querés eliminar esta cuenta?')) return;
+      const ok = await confirm('¿Seguro que querés eliminar esta cuenta?');
+      if (!ok) return;
     }
 
     const { error } = await supabase.from('accounts').delete().eq('id', account.id);

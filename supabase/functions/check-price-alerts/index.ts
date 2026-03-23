@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3';
 
-serve(async (req) => {
+serve(async (req: Request) => {
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') || '',
@@ -24,7 +24,7 @@ serve(async (req) => {
     const cryptoIds = [...new Set(alertas.filter(a => a.coingecko_id).map(a => a.coingecko_id))]
     
     // 3. Obtener precios actuales de CoinGecko
-    let cryptoPrices = {}
+    let cryptoPrices: Record<string, any> = {}
     if (cryptoIds.length > 0) {
       const resp = await fetch(`${COINGECKO_BASE}/simple/price?ids=${cryptoIds.join(',')}&vs_currencies=usd,ars&include_24hr_change=true`)
       cryptoPrices = await resp.json()
@@ -65,7 +65,7 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({ processed: alertas.length, ok: true }), { headers: { 'Content-Type': 'application/json' } })
 
-  } catch (err) {
+  } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { 'Content-Type': 'application/json' } })
   }
 })

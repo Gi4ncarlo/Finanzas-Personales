@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import { calcProximaEjecucion, formatProximaFecha, frecuenciaLabel } from '../utils/recurrentes';
 import { formatARS, formatUSD } from '../utils/currency';
 import RecurrenteModal from '../components/recurrentes/RecurrenteModal';
@@ -11,6 +12,7 @@ import { Plus, RefreshCw, Pause, Play, Pencil, ChevronDown, ChevronUp } from 'lu
 export default function Recurrentes() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { confirm } = useConfirm();
 
   const [loading, setLoading] = useState(true);
   const [activos, setActivos] = useState([]);
@@ -67,7 +69,7 @@ export default function Recurrentes() {
   const handleTogglePause = async (r) => {
     const nuevoEstado = !r.activo;
     if (nuevoEstado === false) {
-      const ok = window.confirm(`¿Pausar "${r.nombre}"? No se registrará automáticamente hasta que lo reactives.`);
+      const ok = await confirm(`¿Pausar "${r.nombre}"? No se registrará automáticamente hasta que lo reactives.`);
       if (!ok) return;
     }
     setToggling(r.id);
