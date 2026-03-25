@@ -5,7 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import useDolarRate from '../../hooks/useDolarBlue';
 import { formatARS, formatUSD } from '../../utils/currency';
-import { getCryptoPrices, getCedearQuotes } from '../../services/quotesService';
+import { getCryptoPrices, getCedearQuotes, getAccionesARQuotes } from '../../services/quotesService';
 import Skeleton from '../ui/Skeleton';
 import { TrendingUp, ArrowRight, ArrowUpRight, ArrowDownLeft, Wallet } from 'lucide-react';
 
@@ -26,16 +26,25 @@ export default function InversionesWidget({ onUpdateTotal }) {
 
   // Fetch prices
   const cryptoIds = positions?.filter(p => p.tipo === 'crypto').map(p => p.coingecko_id).filter(Boolean) || [];
+  const hasCedearsOrAcciones = positions?.some(p => p.tipo === 'cedear' || p.tipo === 'accion');
+  const hasAcciones = positions?.some(p => p.tipo === 'accion');
+
   const { data: quotes, isLoading: loadingQuotes } = useSWR(
     cryptoIds.length > 0 ? ['crypto-quotes-widget', cryptoIds.join(',')] : null,
     () => getCryptoPrices(cryptoIds),
-    { dedupingInterval: 180000 }
+    { dedupingInterval: 120000 }
   );
 
   const { data: cedears, isLoading: loadingCedears } = useSWR(
-    positions?.some(p => p.tipo === 'cedear' || p.tipo === 'accion') ? 'cedear-quotes-widget' : null,
+    hasCedearsOrAcciones ? 'cedear-quotes-widget' : null,
     getCedearQuotes,
-    { dedupingInterval: 180000 }
+    { dedupingInterval: 120000 }
+  );
+
+  const { data: accionesAR, isLoading: loadingAcciones } = useSWR(
+    hasAcciones ? 'acciones-ar-quotes-widget' : null,
+    getAccionesARQuotes,
+    { dedupingInterval: 120000 }
   );
 
   const resumen = useMemo(() => {
@@ -48,8 +57,11 @@ export default function InversionesWidget({ onUpdateTotal }) {
       let precioActual = 0;
       if (pos.tipo === 'crypto' && quotes?.[pos.coingecko_id]) {
         precioActual = quotes[pos.coingecko_id].usd;
-      } else if ((pos.tipo === 'cedear' || pos.tipo === 'accion') && cedears) {
+      } else if (pos.tipo === 'cedear' && cedears) {
         const quote = cedears.find(c => c.simbolo === pos.activo_simbolo);
+        if (quote) precioActual = quote.ultimo / dolarVenta;
+      } else if (pos.tipo === 'accion' && accionesAR) {
+        const quote = accionesAR.find(a => a.simbolo === pos.activo_simbolo);
         if (quote) precioActual = quote.ultimo / dolarVenta;
       }
 
@@ -66,7 +78,7 @@ export default function InversionesWidget({ onUpdateTotal }) {
     const profitPorc = totalInvertidoUSD > 0 ? (profitUSD / totalInvertidoUSD) * 100 : 0;
 
     return { totalUSD: totalActualUSD, profitUSD, profitPorc };
-  }, [positions, quotes, cedears, dolarVenta]);
+  }, [positions, quotes, cedears, accionesAR, dolarVenta]);
 
   // Hook effect para avisar al padre (Dashboard) sobre el nuevo total
   useEffect(() => {
@@ -75,9 +87,19 @@ export default function InversionesWidget({ onUpdateTotal }) {
     }
   }, [resumen.totalUSD, onUpdateTotal]);
 
-  if (loadingPositions || loadingQuotes || loadingCedears) return <Skeleton height="180px" />;
+  if (loadingPositions || loadingQuotes || loadingCedears || loadingAcciones) return <Skeleton height="180px" />;
 
   const isPositive = resumen.profitUSD >= 0;
+
+  // Type badges for dashboard display
+  const getTypeBadge = (tipo) => {
+    const badges = {
+      crypto: { icon: '₿', color: '#F7931A' },
+      cedear: { icon: '🌎', color: '#4CAF50' },
+      accion: { icon: '🇦🇷', color: '#00ADEF' },
+    };
+    return badges[tipo] || badges.crypto;
+  };
 
   return (
     <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -90,7 +112,7 @@ export default function InversionesWidget({ onUpdateTotal }) {
 
       {!positions || positions.length === 0 ? (
         <div style={{ padding: '20px', textAlign: 'center', border: '1px dashed var(--color-border)', borderRadius: '12px' }}>
-           <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '12px' }}>Aumentá tu saldo invirtiendo en Crypto o CEDEARs.</p>
+           <p style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)', marginBottom: '12px' }}>Aumentá tu saldo invirtiendo en Crypto, CEDEARs o Acciones AR.</p>
            <button className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '6px 16px' }} onClick={() => navigate('/inversiones')}>Comenzar</button>
         </div>
       ) : (
@@ -117,12 +139,22 @@ export default function InversionesWidget({ onUpdateTotal }) {
       )}
 
       {positions?.length > 0 && (
-        <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
-            {positions.slice(0, 5).map(pos => (
-                <div key={pos.id} style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: pos.color || 'var(--color-surface-2)', border: '2px solid var(--color-surface)', marginRight: '-8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700 }}>
-                    {pos.imagen_url ? <img src={pos.imagen_url} style={{ width: '100%' }} /> : pos.activo_simbolo?.charAt(0)}
-                </div>
-            ))}
+        <div style={{ display: 'flex', gap: '4px', marginTop: '4px', alignItems: 'center' }}>
+            {positions.slice(0, 5).map(pos => {
+                const badge = getTypeBadge(pos.tipo);
+                return (
+                  <div key={pos.id} title={`${pos.activo_simbolo} (${pos.tipo})`} style={{ 
+                    width: '28px', height: '28px', borderRadius: '50%', 
+                    backgroundColor: pos.color || 'var(--color-surface-2)', 
+                    border: `2px solid ${badge.color}40`, 
+                    marginRight: '-8px', overflow: 'hidden', 
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                    fontSize: '0.6rem', fontWeight: 700, position: 'relative'
+                  }}>
+                      {pos.imagen_url ? <img src={pos.imagen_url} style={{ width: '100%' }} /> : pos.activo_simbolo?.charAt(0)}
+                  </div>
+                );
+            })}
             {positions.length > 5 && (
                 <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: 'var(--color-surface-3)', border: '2px solid var(--color-surface)', marginLeft: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 700 }}>
                     +{positions.length - 5}

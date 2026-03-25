@@ -7,7 +7,7 @@ import { useToast } from '../context/ToastContext';
 import { useConfirm } from '../context/ConfirmContext';
 import useDolarRate from '../hooks/useDolarBlue';
 import { formatARS, formatUSD } from '../utils/currency';
-import { getCoinHistory, getCryptoPrices, getCedearQuotes } from '../services/quotesService';
+import { getCoinHistory, getCryptoPrices, getCedearQuotes, getAccionesARQuotes, getAccionARHistory } from '../services/quotesService';
 import Skeleton from '../components/ui/Skeleton';
 import AlertModal from '../components/inversiones/AlertModal';
 
@@ -43,11 +43,21 @@ export default function InvestmentDetail() {
     }
   );
 
-  // 2. Fetch History (only for Crypto currently via CoinGecko)
-  const { data: history, isLoading: loadingHistory } = useSWR(
-    pos?.coingecko_id ? ['history', pos.coingecko_id, days] : null,
+  // 2. Fetch History
+  // Crypto: CoinGecko history
+  const { data: cryptoHistory, isLoading: loadingCryptoHistory } = useSWR(
+    pos?.tipo === 'crypto' && pos?.coingecko_id ? ['history', pos.coingecko_id, days] : null,
     () => getCoinHistory(pos.coingecko_id, days)
   );
+
+  // Accion AR: Rava history
+  const { data: accionHistory, isLoading: loadingAccionHistory } = useSWR(
+    pos?.tipo === 'accion' ? ['history-ar', pos.activo_simbolo, days] : null,
+    () => getAccionARHistory(pos.activo_simbolo, days)
+  );
+
+  const loadingHistory = loadingCryptoHistory || loadingAccionHistory;
+  const history = pos?.tipo === 'crypto' ? cryptoHistory : pos?.tipo === 'accion' ? accionHistory : null;
 
   // 3. Current Price
   const { data: quotes } = useSWR(
@@ -62,6 +72,12 @@ export default function InvestmentDetail() {
     { refreshInterval: 60000 }
   );
 
+  const { data: accionesAR } = useSWR(
+    pos?.tipo === 'accion' ? 'acciones-ar-detail' : null,
+    getAccionesARQuotes,
+    { refreshInterval: 60000 }
+  );
+
   const currentPrice = useMemo(() => {
     if (!pos || !dolarVenta) return 0;
     if (pos.tipo === 'crypto' && quotes?.[pos.coingecko_id]) return quotes[pos.coingecko_id].usd;
@@ -69,16 +85,47 @@ export default function InvestmentDetail() {
         const q = cedears.find(c => c.simbolo === pos.activo_simbolo);
         return q ? q.ultimo / dolarVenta : 0;
     }
+    if (pos.tipo === 'accion' && accionesAR) {
+        const q = accionesAR.find(a => a.simbolo === pos.activo_simbolo);
+        return q ? q.ultimo / dolarVenta : 0;
+    }
     return 0;
-  }, [pos, quotes, cedears, dolarVenta]);
+  }, [pos, quotes, cedears, accionesAR, dolarVenta]);
+
+  const currentPriceARS = useMemo(() => {
+    if (!pos) return 0;
+    if (pos.tipo === 'accion' && accionesAR) {
+      const q = accionesAR.find(a => a.simbolo === pos.activo_simbolo);
+      return q ? q.ultimo : 0;
+    }
+    if (pos.tipo === 'cedear' && cedears) {
+      const q = cedears.find(c => c.simbolo === pos.activo_simbolo);
+      return q ? q.ultimo : 0;
+    }
+    return currentPrice * (dolarVenta || 1);
+  }, [pos, accionesAR, cedears, currentPrice, dolarVenta]);
 
   const chartData = useMemo(() => {
     if (!history) return [];
-    return history.map(([ts, price]) => ({
-      date: new Date(ts).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }),
-      price
-    }));
-  }, [history]);
+    
+    // Crypto history format: [[ts, price], ...]
+    if (pos?.tipo === 'crypto' && Array.isArray(history) && history.length > 0 && Array.isArray(history[0])) {
+      return history.map(([ts, price]) => ({
+        date: new Date(ts).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }),
+        price
+      }));
+    }
+    
+    // Accion AR history format: [{fecha, cierre, ...}, ...]
+    if (pos?.tipo === 'accion' && Array.isArray(history)) {
+      return history.map(h => ({
+        date: new Date(h.fecha).toLocaleDateString('es-AR', { day: 'numeric', month: 'short' }),
+        price: h.cierre || h.ultimo || 0
+      }));
+    }
+
+    return [];
+  }, [history, pos]);
 
   const handleDelete = async () => {
     const ok = await confirm('¿Estás seguro de eliminar esta posición?');
@@ -92,10 +139,19 @@ export default function InvestmentDetail() {
   if (loadingPos) return <Skeleton height="500px" />;
   if (!pos) return <div>No se encontró la inversión.</div>;
 
+  const isARType = pos.tipo === 'accion' || pos.tipo === 'cedear';
   const valorActualUSD = pos.cantidad * currentPrice;
+  const valorActualARS = pos.cantidad * currentPriceARS;
   const invertidoUSD = pos.moneda_compra === 'USD' ? (pos.cantidad * pos.precio_compra) : (pos.cantidad * pos.precio_compra / dolarVenta);
   const ROI = invertidoUSD > 0 ? ((valorActualUSD - invertidoUSD) / invertidoUSD) * 100 : 0;
   const isProfit = ROI >= 0;
+
+  const typeBadges = {
+    crypto: { label: 'Crypto', color: '#F7931A' },
+    cedear: { label: 'CEDEAR', color: '#4CAF50' },
+    accion: { label: 'Acción AR · BYMA', color: '#00ADEF' },
+  };
+  const badge = typeBadges[pos.tipo] || typeBadges.crypto;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -104,8 +160,14 @@ export default function InvestmentDetail() {
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
            {pos.imagen_url && <img src={pos.imagen_url} style={{ width: '40px', height: '40px', borderRadius: '50%' }} />}
            <div>
-              <h1 style={{ fontWeight: 600, fontSize: '1.75rem' }}>{pos.activo_nombre} ({pos.activo_symbol})</h1>
-              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>Posición de tipo {pos.tipo}</p>
+              <h1 style={{ fontWeight: 600, fontSize: '1.75rem', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                {pos.activo_nombre} ({pos.activo_simbolo})
+                <span style={{ fontSize: '0.7rem', padding: '3px 8px', borderRadius: '6px', fontWeight: 500, backgroundColor: `${badge.color}20`, color: badge.color }}>{badge.label}</span>
+              </h1>
+              <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Posición de tipo {pos.tipo}
+                {pos.sector && <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--color-surface-2)', padding: '2px 8px', borderRadius: '4px' }}>· {pos.sector}</span>}
+              </p>
            </div>
         </div>
       </header>
@@ -116,7 +178,8 @@ export default function InvestmentDetail() {
           <div className="card" style={{ padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
                <h3 style={{ fontWeight: 600, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                 <TrendingUp size={20} color="var(--color-gold)" /> Evolución de Precio (USD)
+                 <TrendingUp size={20} color="var(--color-gold)" /> 
+                 Evolución de Precio {isARType ? '(ARS)' : '(USD)'}
                </h3>
                <div style={{ display: 'flex', gap: '4px', backgroundColor: 'var(--color-surface-2)', padding: '4px', borderRadius: '8px' }}>
                  {[30, 90, 365].map(d => (
@@ -145,13 +208,18 @@ export default function InvestmentDetail() {
                     <YAxis domain={['auto', 'auto']} hide />
                     <Tooltip 
                       contentStyle={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '12px' }}
-                      formatter={(v) => formatUSD(v)}
+                      formatter={(v) => isARType ? formatARS(v) : formatUSD(v)}
                     />
                     <Area type="monotone" dataKey="price" stroke="var(--color-gold)" strokeWidth={2} fillOpacity={1} fill="url(#colorPrice)" />
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)' }}>Histórico no disponible para este activo</div>
+                <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--color-text-muted)', flexDirection: 'column', gap: '8px' }}>
+                  <span>Historial no disponible para este activo</span>
+                  {isARType && currentPriceARS > 0 && (
+                    <span style={{ fontSize: '0.85rem' }}>Último precio: {formatARS(currentPriceARS)}</span>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -162,7 +230,6 @@ export default function InvestmentDetail() {
                <h3 style={{ fontWeight: 600, fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                  <Clock size={20} color="var(--color-gold)" /> Historial de Compras
                </h3>
-               {/* <button className="btn btn-secondary" style={{ fontSize: '0.8rem' }}>+ Agregar Compra</button> */}
             </div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
@@ -178,7 +245,7 @@ export default function InvestmentDetail() {
                   {pos.investment_purchases?.map(p => (
                     <tr key={p.id} style={{ borderBottom: '1px solid var(--color-border)' }}>
                       <td style={{ padding: '12px' }}>{new Date(p.fecha_compra + 'T12:00:00').toLocaleDateString()}</td>
-                      <td style={{ padding: '12px', fontWeight: 600 }}>{p.cantidad}</td>
+                      <td style={{ padding: '12px', fontWeight: 600 }}>{p.cantidad}{pos.tipo === 'accion' ? ' acc' : ''}</td>
                       <td style={{ padding: '12px' }}>{p.moneda_compra === 'USD' ? formatUSD(p.precio_compra) : formatARS(p.precio_compra)}</td>
                       <td style={{ padding: '12px' }}>{p.moneda_compra === 'USD' ? formatUSD(p.cantidad * p.precio_compra) : formatARS(p.cantidad * p.precio_compra)}</td>
                     </tr>
@@ -199,7 +266,10 @@ export default function InvestmentDetail() {
              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
                    <span style={{ color: 'var(--color-text-muted)' }}>Valor Actual:</span>
-                   <span style={{ fontWeight: 600 }}>{formatUSD(valorActualUSD)}</span>
+                   <div style={{ textAlign: 'right' }}>
+                     <span style={{ fontWeight: 600 }}>{formatUSD(valorActualUSD)}</span>
+                     {isARType && <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{formatARS(valorActualARS)}</div>}
+                   </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
                    <span style={{ color: 'var(--color-text-muted)' }}>Costo de Compra:</span>
@@ -211,6 +281,14 @@ export default function InvestmentDetail() {
                       {isProfit ? '+' : '-'}{formatUSD(Math.abs(valorActualUSD - invertidoUSD))}
                    </span>
                 </div>
+                {isARType && dolarVenta > 0 && (
+                  <div style={{ marginTop: '8px', padding: '10px', backgroundColor: 'var(--color-surface-2)', borderRadius: '8px', fontSize: '0.8rem' }}>
+                    <div style={{ color: 'var(--color-text-muted)', marginBottom: '4px' }}>💱 Equivalente en USD</div>
+                    <div style={{ fontWeight: 600 }}>
+                      {formatUSD(valorActualUSD)} <span style={{ color: 'var(--color-text-muted)', fontWeight: 400 }}>(al dólar: {formatARS(dolarVenta)})</span>
+                    </div>
+                  </div>
+                )}
              </div>
           </div>
 
@@ -227,7 +305,12 @@ export default function InvestmentDetail() {
           <div className="card" style={{ padding: '20px', backgroundColor: 'var(--color-surface-2)' }}>
              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--color-text-muted)' }}>
                 <Info size={20} />
-                <span style={{ fontSize: '0.8rem' }}>Las cotizaciones se actualizan cada 3 minutos automáticamente. En CEDEARs usamos el MEP implícito.</span>
+                <span style={{ fontSize: '0.8rem' }}>
+                  {pos.tipo === 'accion' 
+                    ? 'Cotización en ARS vía BYMA. Se actualiza cada 5 minutos en horario de mercado.' 
+                    : 'Las cotizaciones se actualizan cada 3 minutos automáticamente. En CEDEARs usamos el MEP implícito.'
+                  }
+                </span>
              </div>
           </div>
         </div>
@@ -237,9 +320,8 @@ export default function InvestmentDetail() {
         isOpen={alertModalOpen}
         onClose={() => setAlertModalOpen(false)}
         asset={pos}
-        currentPrice={currentPrice}
+        currentPrice={isARType ? currentPriceARS : currentPrice}
       />
     </div>
   );
 }
-

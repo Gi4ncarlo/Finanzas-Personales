@@ -1,4 +1,5 @@
 import { getCoinHistory } from '../services/quotesService';
+import { COLORES_ACCIONES_AR } from '../data/acciones-argentinas';
 
 /**
  * Módulo E.2 - Evolución histórica del portfolio
@@ -49,7 +50,7 @@ export const fetchPortfolioHistory = async (posiciones, days = 30) => {
           const precioEseDia = point ? point[1] : (pos.precioActual || pos.precio_compra);
           valorTotalUSD += pos.cantidad * precioEseDia;
         } else {
-          // Si no hay histórico (CEDEARs o error), usamos actual/compra
+          // Si no hay histórico (CEDEARs, Acciones AR, o error), usamos actual/compra
           valorTotalUSD += (pos.cantidad * (pos.precioActual || pos.precio_compra));
         }
       }
@@ -69,10 +70,13 @@ export const fetchPortfolioHistory = async (posiciones, days = 30) => {
 
 /**
  * Colores específicos para activos - Módulo E.1
+ * Extendido con paleta para Acciones AR (azules/celestes argentinos)
  */
 export const getAssetColor = (symbol, type) => {
   const symbolUpper = symbol?.toUpperCase();
-  const colors = {
+
+  // Colores de crypto conocidos
+  const cryptoColors = {
     'BTC': '#F7931A',
     'ETH': '#627EEA',
     'SOL': '#9945FF',
@@ -84,7 +88,12 @@ export const getAssetColor = (symbol, type) => {
     'BNB': '#F3BA2F',
   };
 
-  if (colors[symbolUpper]) return colors[symbolUpper];
+  if (cryptoColors[symbolUpper]) return cryptoColors[symbolUpper];
+
+  // Colores brand de acciones AR
+  if (type === 'accion' && COLORES_ACCIONES_AR[symbolUpper]) {
+    return COLORES_ACCIONES_AR[symbolUpper];
+  }
 
   if (type === 'crypto') {
     // Generar un color aleatorio estable basado en el nombre
@@ -96,6 +105,28 @@ export const getAssetColor = (symbol, type) => {
     return '#' + '00000'.substring(0, 6 - c.length) + c;
   }
 
-  // Escala de azules para CEDEARs
+  if (type === 'accion') {
+    // Escala de azules celestes argentinos para acciones sin color brand
+    let hash = 0;
+    for (let i = 0; i < symbolUpper.length; i++) {
+      hash = symbolUpper.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = 195 + (hash % 25); // rango 195-220 (azul celeste)
+    const light = 35 + (Math.abs(hash >> 8) % 30); // rango 35-65%
+    return `hsl(${hue}, 70%, ${light}%)`;
+  }
+
+  // Escala de verdes para CEDEARs
+  if (type === 'cedear') {
+    let hash = 0;
+    for (let i = 0; i < symbolUpper.length; i++) {
+      hash = symbolUpper.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const hue = 130 + (hash % 30); // verdes
+    const light = 30 + (Math.abs(hash >> 8) % 30);
+    return `hsl(${hue}, 60%, ${light}%)`;
+  }
+
+  // Fallback general
   return `hsl(210, 70%, ${Math.floor(Math.random() * 40) + 30}%)`;
 };

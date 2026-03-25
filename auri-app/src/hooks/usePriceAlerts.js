@@ -3,7 +3,7 @@ import useSWR from 'swr';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
-import { getCryptoPrices, getCedearQuotes } from '../services/quotesService';
+import { getCryptoPrices, getCedearQuotes, getAccionesARQuotes } from '../services/quotesService';
 import useDolarRate from './useDolarBlue';
 
 export default function usePriceAlerts() {
@@ -38,17 +38,23 @@ export default function usePriceAlerts() {
 
     const checkAlerts = async () => {
       // Separar por tipo para minimizar llamadas a API
-      // Nota: Asumimos que guardamos el tipo en la alerta o lo inferimos. 
-      // Para esta etapa, buscaremos el activo en inversiones si no está en la alerta.
-      
       const cryptoIds = [...new Set(alerts.filter(a => a.coingecko_id).map(a => a.coingecko_id))];
-      const hasCedears = alerts.some(a => !a.coingecko_id);
+      const hasCedears = alerts.some(a => !a.coingecko_id && a.activo_simbolo);
+      // Nota: acciones AR y CEDEARs se obtienen de fuentes distintas (getAccionesARQuotes vs getCedearQuotes)
+      // Pero para alertas, necesitamos saber el tipo. 
+      // Inferimos: si no tiene coingecko_id, buscamos en ambas fuentes (CEDEARs + Acciones AR).
 
       let cryptoQuotes = {};
       let cedearQuotes = [];
+      let accionesQuotes = [];
 
       if (cryptoIds.length > 0) cryptoQuotes = await getCryptoPrices(cryptoIds);
-      if (hasCedears) cedearQuotes = await getCedearQuotes();
+      if (hasCedears) {
+        [cedearQuotes, accionesQuotes] = await Promise.all([
+          getCedearQuotes(),
+          getAccionesARQuotes()
+        ]);
+      }
 
       for (const alert of alerts) {
         let precioActual = 0;
@@ -56,7 +62,11 @@ export default function usePriceAlerts() {
         if (alert.coingecko_id && cryptoQuotes[alert.coingecko_id]) {
             precioActual = alert.moneda === 'USD' ? cryptoQuotes[alert.coingecko_id].usd : cryptoQuotes[alert.coingecko_id].ars;
         } else if (!alert.coingecko_id) {
-            const quote = cedearQuotes.find(c => c.simbolo === alert.activo_simbolo);
+            // Buscar en CEDEARs primero, luego en Acciones AR
+            let quote = cedearQuotes.find(c => c.simbolo === alert.activo_simbolo);
+            if (!quote) {
+              quote = accionesQuotes.find(a => a.simbolo === alert.activo_simbolo);
+            }
             if (quote) {
                 precioActual = alert.moneda === 'ARS' ? quote.ultimo : quote.ultimo / dolarVenta;
             }

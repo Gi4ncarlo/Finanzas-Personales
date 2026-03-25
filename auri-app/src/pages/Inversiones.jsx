@@ -5,18 +5,21 @@ import useSWR from 'swr';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
+import { useConfirm } from '../context/ConfirmContext';
 import useDolarRate from '../hooks/useDolarBlue';
 import { formatARS, formatUSD } from '../utils/currency';
 import { getCryptoPrices, getCedearQuotes } from '../services/quotesService';
 import useInvestmentPrices from '../hooks/useInvestmentPrices';
 import { getAssetColor, fetchPortfolioHistory } from '../utils/portfolioCalculations';
+import { SECTORES_ACCIONES } from '../data/acciones-argentinas';
 import InvestmentModal from '../components/inversiones/InvestmentModal';
 import Skeleton from '../components/ui/Skeleton';
 
 
 import { 
   TrendingUp, Plus, PieChart as PieIcon, LineChart as LineIcon, 
-  ArrowUpRight, ArrowDownLeft, AlertCircle, RefreshCw, Layers, DollarSign 
+  ArrowUpRight, ArrowDownLeft, AlertCircle, RefreshCw, Layers, DollarSign,
+  Trash2
 } from 'lucide-react';
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip, AreaChart, Area, XAxis, YAxis, CartesianGrid, ReferenceLine } from 'recharts';
 
@@ -62,6 +65,7 @@ export default function Inversiones() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { confirm } = useConfirm();
   const { venta: dolarVenta } = useDolarRate(profile?.tipo_cambio_pref || 'oficial');
 
   // Fetch accounts for the modal
@@ -71,7 +75,8 @@ export default function Inversiones() {
   });
 
   
-  const [filter, setFilter] = useState('todas'); // 'todas', 'crypto', 'cedears'
+  const [filter, setFilter] = useState('todas'); // 'todas', 'crypto', 'cedear', 'accion'
+  const [sectorFilter, setSectorFilter] = useState('todas'); // sector sub-filter for acciones AR
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPos, setEditingPos] = useState(null);
 
@@ -95,7 +100,7 @@ export default function Inversiones() {
     error: quotesError, 
     ultimaActualizacion, 
     refetch 
-  } = useInvestmentPrices(positions || []);
+  } = useInvestmentPrices(positions || [], dolarVenta);
 
   const [historicalData, setHistoricalData] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -110,24 +115,29 @@ export default function Inversiones() {
       const q = quotes[pos.activo_simbolo];
       let precioActual = 0;
       let var24h = 0;
+      let precioActualARS = 0; // precio nativo en ARS para acciones y CEDEARs
 
       if (q) {
-        // useInvestmentPrices nos devuelve precio_ars o precio (usd)
         if (pos.tipo === 'crypto') {
           precioActual = q.precio || (pos.moneda_compra === 'USD' ? pos.precio_compra : pos.precio_compra / dolarVenta);
+          precioActualARS = q.precio_ars || (precioActual * dolarVenta);
           var24h = q.variacion24h || 0;
         } else {
-          precioActual = (q.precio_ars ? q.precio_ars / dolarVenta : (pos.moneda_compra === 'USD' ? pos.precio_compra : pos.precio_compra / dolarVenta));
+          // CEDEARs y Acciones AR: precio nativo en ARS
+          precioActualARS = q.precio_ars || (pos.moneda_compra === 'ARS' ? pos.precio_compra : pos.precio_compra * dolarVenta);
+          precioActual = q.precio_ars ? q.precio_ars / dolarVenta : (pos.moneda_compra === 'USD' ? pos.precio_compra : pos.precio_compra / dolarVenta);
           var24h = q.variacion24h || 0;
         }
       } else {
-        // Fallback al precio de compra original si la API de precios falla (Ej: rate limits)
+        // Fallback al precio de compra original si la API de precios falla
         precioActual = pos.moneda_compra === 'USD' ? pos.precio_compra : (pos.precio_compra / dolarVenta);
+        precioActualARS = pos.moneda_compra === 'ARS' ? pos.precio_compra : (pos.precio_compra * dolarVenta);
         var24h = 0;
       }
 
 
       const valorActualUSD = pos.cantidad * precioActual;
+      const valorActualARS = pos.cantidad * precioActualARS;
       const invertidoUSD = pos.moneda_compra === 'USD' ? (pos.cantidad * pos.precio_compra) : (pos.cantidad * pos.precio_compra / dolarVenta);
       const gananciaUSD = valorActualUSD - invertidoUSD;
       const gananciaPorc = invertidoUSD > 0 ? (gananciaUSD / invertidoUSD) * 100 : 0;
@@ -135,7 +145,9 @@ export default function Inversiones() {
       return {
         ...pos,
         precioActual,
+        precioActualARS,
         valorActualUSD,
+        valorActualARS,
         invertidoUSD,
         gananciaUSD,
         gananciaPorc,
@@ -163,9 +175,21 @@ export default function Inversiones() {
   }, [processedPositions, dolarVenta]);
 
   const filteredPositions = useMemo(() => {
-    if (filter === 'todas') return processedPositions;
-    return processedPositions.filter(p => p.tipo === filter);
-  }, [processedPositions, filter]);
+    let filtered = processedPositions;
+    if (filter !== 'todas') {
+      filtered = filtered.filter(p => p.tipo === filter);
+    }
+    // Sub-filtro por sector (solo para acciones AR)
+    if (filter === 'accion' && sectorFilter !== 'todas') {
+      filtered = filtered.filter(p => p.sector === sectorFilter);
+    }
+    return filtered;
+  }, [processedPositions, filter, sectorFilter]);
+
+  // Reset sector filter when main filter changes
+  useEffect(() => {
+    if (filter !== 'accion') setSectorFilter('todas');
+  }, [filter]);
 
   // --- CHARTS DATA ---
   const distributionData = useMemo(() => {
@@ -188,6 +212,16 @@ export default function Inversiones() {
   const freshColor = !ultimaActualizacion ? 'var(--color-text-muted)' 
     : (Date.now() - ultimaActualizacion.getTime() > 300000) ? 'var(--color-warning)' : 'var(--color-success)';
 
+
+  // Helper to get type badge
+  const getTypeBadge = (tipo) => {
+    const badges = {
+      crypto: { icon: '₿', label: 'Crypto', color: '#F7931A' },
+      cedear: { icon: '🌎', label: 'CEDEAR', color: '#4CAF50' },
+      accion: { icon: '🇦🇷', label: 'AR', color: '#00ADEF' },
+    };
+    return badges[tipo] || badges.crypto;
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
@@ -312,24 +346,57 @@ export default function Inversiones() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* Filtros principales */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
           <div style={{ display: 'flex', gap: '8px', backgroundColor: 'var(--color-surface-2)', padding: '4px', borderRadius: '10px' }}>
-            {['todas', 'crypto', 'cedear'].map(t => (
+            {[
+              { key: 'todas', label: 'Todas' },
+              { key: 'crypto', label: 'Crypto' },
+              { key: 'cedear', label: 'CEDEARs' },
+              { key: 'accion', label: 'Acciones AR' },
+            ].map(t => (
               <button 
-                key={t}
-                onClick={() => setFilter(t)}
+                key={t.key}
+                onClick={() => setFilter(t.key)}
                 style={{
                   padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer',
-                  backgroundColor: filter === t ? 'var(--color-surface)' : 'transparent',
-                  color: filter === t ? 'var(--color-gold)' : 'var(--color-text-muted)',
-                  fontWeight: filter === t ? 600 : 500, transition: 'all 0.2s', fontSize: '0.85rem'
+                  backgroundColor: filter === t.key ? 'var(--color-surface)' : 'transparent',
+                  color: filter === t.key ? 'var(--color-gold)' : 'var(--color-text-muted)',
+                  fontWeight: filter === t.key ? 600 : 500, transition: 'all 0.2s', fontSize: '0.85rem'
                 }}
               >
-                {t === 'todas' ? 'Todas' : t === 'crypto' ? 'Cripto' : 'CEDEARs'}
+                {t.label}
               </button>
             ))}
           </div>
         </div>
+
+        {/* Sub-filtro por sector (solo cuando "Acciones AR" está activo) */}
+        {filter === 'accion' && (
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <button 
+              onClick={() => setSectorFilter('todas')}
+              style={{
+                padding: '4px 12px', borderRadius: '20px', border: '1px solid var(--color-border)', 
+                cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500, transition: 'all 0.2s',
+                backgroundColor: sectorFilter === 'todas' ? 'rgba(0,173,239,0.15)' : 'transparent',
+                color: sectorFilter === 'todas' ? '#00ADEF' : 'var(--color-text-muted)',
+              }}
+            >Todos</button>
+            {SECTORES_ACCIONES.map(s => (
+              <button 
+                key={s}
+                onClick={() => setSectorFilter(s)}
+                style={{
+                  padding: '4px 12px', borderRadius: '20px', border: '1px solid var(--color-border)', 
+                  cursor: 'pointer', fontSize: '0.75rem', fontWeight: 500, transition: 'all 0.2s',
+                  backgroundColor: sectorFilter === s ? 'rgba(0,173,239,0.15)' : 'transparent',
+                  color: sectorFilter === s ? '#00ADEF' : 'var(--color-text-muted)',
+                }}
+              >{s}</button>
+            ))}
+          </div>
+        )}
 
         {/* --- TABLA DE POSICIONES --- */}
         <div className="card" style={{ padding: '0', overflowX: 'auto' }}>
@@ -338,17 +405,36 @@ export default function Inversiones() {
               <tr style={{ borderBottom: '1px solid var(--color-border)', backgroundColor: 'rgba(255,255,255,0.02)' }}>
                 <th style={{ padding: '16px 20px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Activo</th>
                 <th style={{ padding: '16px 20px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Cantidad</th>
-                <th style={{ padding: '16px 20px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Precio Compra</th>
-                <th style={{ padding: '16px 20px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Precio Actual</th>
+                <th style={{ padding: '16px 20px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>P. Compra</th>
+                <th style={{ padding: '16px 20px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>P. Actual</th>
                 <th style={{ padding: '16px 20px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Valor Actual</th>
-                <th style={{ padding: '16px 20px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>Ganancia / Pérdida</th>
+                <th style={{ padding: '16px 20px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>G/P</th>
                 <th style={{ padding: '16px 20px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>24h</th>
+                <th style={{ padding: '16px 20px', fontWeight: 600, fontSize: '0.85rem', color: 'var(--color-text-muted)', textAlign: 'right' }}>Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filteredPositions.map(pos => {
                 const isPosG = pos.gananciaUSD >= 0;
                 const isPos24 = pos.var24h >= 0;
+                const badge = getTypeBadge(pos.tipo);
+                const isARType = pos.tipo === 'accion' || pos.tipo === 'cedear';
+                
+                const handleDeleteRow = async (e, id, symbol) => {
+                  e.stopPropagation();
+                  const ok = await confirm(`¿Estás seguro de eliminar la posición de ${symbol}?`);
+                  if (!ok) return;
+                  
+                  try {
+                    const { error } = await supabase.from('investments').delete().eq('id', id);
+                    if (error) throw error;
+                    toast.success(`${symbol} eliminado correctamente`);
+                    mutatePositions();
+                  } catch (err) {
+                    toast.error('Error al eliminar la posición');
+                    console.error(err);
+                  }
+                };
                 
                 return (
                   <tr key={pos.id} style={{ borderBottom: '1px solid var(--color-border)', transition: 'background 0.2s', cursor: 'pointer' }} onClick={() => navigate(`/inversiones/${pos.id}`)}>
@@ -357,20 +443,47 @@ export default function Inversiones() {
                         {pos.imagen_url ? (
                           <img src={pos.imagen_url} alt={pos.activo_symbol} style={{ width: '28px', height: '28px', borderRadius: '50%' }} />
                         ) : (
-                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: pos.color || 'var(--color-surface-2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700 }}>{pos.activo_simbolo?.charAt(0)}</div>
+                          <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: getAssetColor(pos.activo_simbolo, pos.tipo), display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', fontWeight: 700, color: '#fff' }}>{pos.activo_simbolo?.charAt(0)}</div>
                         )}
                         <div>
-                          <div style={{ fontWeight: 600 }}>{pos.activo_simbolo}</div>
-                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{pos.activo_nombre}</div>
+                          <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {pos.activo_simbolo}
+                            <span style={{ 
+                              fontSize: '0.6rem', padding: '1px 5px', borderRadius: '4px', fontWeight: 500,
+                              backgroundColor: `${badge.color}20`, color: badge.color 
+                            }}>{badge.label}</span>
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {pos.activo_nombre}
+                            {pos.tipo === 'accion' && pos.sector && (
+                              <span style={{ fontSize: '0.6rem', color: 'var(--color-text-muted)', opacity: 0.7 }}>· {pos.sector}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
-                    <td style={{ padding: '16px 20px', fontSize: '0.9rem' }}>{pos.cantidad} {pos.activo_simbolo}</td>
-                    <td style={{ padding: '16px 20px', fontSize: '0.9rem' }}>{pos.moneda_compra === 'USD' ? formatUSD(pos.precio_compra) : formatARS(pos.precio_compra)}</td>
-                    <td style={{ padding: '16px 20px', fontWeight: 600 }}>{formatUSD(pos.precioActual)}</td>
+                    <td style={{ padding: '16px 20px', fontSize: '0.9rem' }}>
+                      {pos.tipo === 'accion' ? `${pos.cantidad} acc` : `${pos.cantidad} ${pos.activo_simbolo}`}
+                    </td>
+                    <td style={{ padding: '16px 20px', fontSize: '0.9rem' }}>
+                      {isARType ? formatARS(pos.precio_compra) : (pos.moneda_compra === 'USD' ? formatUSD(pos.precio_compra) : formatARS(pos.precio_compra))}
+                      {isARType && <span style={{ fontSize: '0.65rem', color: 'var(--color-text-muted)', display: 'block' }}>ARS</span>}
+                    </td>
+                    <td style={{ padding: '16px 20px', fontWeight: 600 }}>
+                      {isARType ? (
+                        <div>
+                          <div>{formatARS(pos.precioActualARS)}</div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>≈ {formatUSD(pos.precioActual)}</div>
+                        </div>
+                      ) : (
+                        formatUSD(pos.precioActual)
+                      )}
+                    </td>
                     <td style={{ padding: '16px 20px' }}>
                       <div style={{ fontWeight: 600 }}>{formatUSD(pos.valorActualUSD)}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{formatARS(pos.valorActualUSD * dolarVenta)}</div>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                        {isARType ? formatARS(pos.valorActualARS) : formatARS(pos.valorActualUSD * dolarVenta)}
+                      </div>
                     </td>
                     <td style={{ padding: '16px 20px' }}>
                       <div style={{ fontWeight: 600, color: isPosG ? 'var(--color-success)' : 'var(--color-danger)' }}>
@@ -389,12 +502,21 @@ export default function Inversiones() {
                         {isPos24 ? '+' : ''}{pos.var24h?.toFixed(2)}%
                       </span>
                     </td>
+                    <td style={{ padding: '16px 20px', textAlign: 'right' }}>
+                       <button 
+                        className="btn-icon" 
+                        onClick={(e) => handleDeleteRow(e, pos.id, pos.activo_simbolo)}
+                        style={{ color: 'var(--color-danger)', border: 'none', background: 'transparent' }}
+                       >
+                         <Trash2 size={18} />
+                       </button>
+                    </td>
                   </tr>
                 );
               })}
               {filteredPositions.length === 0 && (
                 <tr>
-                  <td colSpan="7" style={{ padding: '48px', textAlign: 'center', color: 'var(--color-text-muted)' }}>No hay posiciones registradas.</td>
+                  <td colSpan="8" style={{ padding: '48px', textAlign: 'center', color: 'var(--color-text-muted)' }}>No hay posiciones registradas.</td>
                 </tr>
               )}
             </tbody>
@@ -411,4 +533,3 @@ export default function Inversiones() {
     </div>
   );
 }
-
