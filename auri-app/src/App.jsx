@@ -29,6 +29,9 @@ import Alertas from './pages/Alertas';
 import Notificaciones from './pages/Notificaciones';
 
 
+import Hogar from './pages/Hogar';
+
+
 function App() {
   return (
     <AuthProvider>
@@ -46,6 +49,7 @@ function App() {
             <Route element={<AppLayout />}>
               <Route path="/" element={<Navigate to="/dashboard" replace />} />
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/hogar" element={<Hogar />} />
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/perfil" element={<Perfil />} />
               <Route path="/configuracion" element={<Configuracion />} />

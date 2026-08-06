@@ -1,7 +1,7 @@
 import { Outlet, Navigate, NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useState } from 'react';
-import { LayoutDashboard, ArrowLeftRight, Wallet, Target, TrendingUp, RefreshCw, BarChart3, Settings, User, LogOut, Menu, ChevronLeft, Bell } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, Wallet, Target, TrendingUp, RefreshCw, BarChart3, Settings, User, LogOut, Menu, ChevronLeft, Bell, Home } from 'lucide-react';
 import Skeleton from '../ui/Skeleton';
 import useDolarRate from '../../hooks/useDolarBlue';
 import usePriceAlerts from '../../hooks/usePriceAlerts';
@@ -38,6 +38,7 @@ export default function AppLayout() {
 
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: <LayoutDashboard size={20} /> },
+    { name: 'Control de Casa', path: '/hogar', icon: <Home size={20} /> },
     { name: 'Transacciones', path: '/transacciones', icon: <ArrowLeftRight size={20} /> },
     { name: 'Cuentas', path: '/cuentas', icon: <Wallet size={20} /> },
     { name: 'Metas', path: '/metas', icon: <Target size={20} /> },

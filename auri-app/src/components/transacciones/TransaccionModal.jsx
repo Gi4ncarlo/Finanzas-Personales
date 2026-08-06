@@ -22,6 +22,8 @@ export default function TransaccionModal({ isOpen, onClose, onSave, transaccion 
   const [fecha, setFecha] = useState(new Date().toISOString().slice(0, 10));
   const [notas, setNotas] = useState('');
   const [tipoCambio, setTipoCambio] = useState('');
+  const [esGastoCasa, setEsGastoCasa] = useState(false);
+  const [householdBucketId, setHouseholdBucketId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -38,6 +40,8 @@ export default function TransaccionModal({ isOpen, onClose, onSave, transaccion 
       setFecha(transaccion.fecha ? transaccion.fecha.slice(0, 10) : new Date().toISOString().slice(0, 10));
       setNotas(transaccion.notas || '');
       setTipoCambio(transaccion.tipo_cambio ? String(transaccion.tipo_cambio) : '');
+      setEsGastoCasa(!!transaccion.es_gasto_casa);
+      setHouseholdBucketId(transaccion.household_bucket_id || null);
     } else {
       setTipo('egreso');
       setAccountId('');
@@ -49,6 +53,8 @@ export default function TransaccionModal({ isOpen, onClose, onSave, transaccion 
       setFecha(new Date().toISOString().slice(0, 10));
       setNotas('');
       setTipoCambio('');
+      setEsGastoCasa(false);
+      setHouseholdBucketId(null);
     }
     setError('');
   }, [transaccion, isOpen]);
@@ -122,6 +128,7 @@ export default function TransaccionModal({ isOpen, onClose, onSave, transaccion 
         const parId = transaccion?.transferencia_par_id || crypto.randomUUID();
         
         const basePayload = {
+          id: transaccion?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'tx-' + Date.now() + Math.random().toString(36).substr(2, 5)),
           user_id: user.id,
           monto: parseFloat(monto),
           moneda,
@@ -132,6 +139,8 @@ export default function TransaccionModal({ isOpen, onClose, onSave, transaccion 
           tipo: 'transferencia',
           transferencia_par_id: parId,
           category_id: null,
+          es_gasto_casa: esGastoCasa,
+          household_bucket_id: householdBucketId,
         };
 
         if (isEditing && transaccion.transferencia_par_id) {
@@ -155,6 +164,7 @@ export default function TransaccionModal({ isOpen, onClose, onSave, transaccion 
       } else {
         // Ingreso or egreso
         const payload = {
+          id: transaccion?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'tx-' + Date.now() + Math.random().toString(36).substr(2, 5)),
           user_id: user.id,
           account_id: accountId,
           account_destino_id: null,
@@ -167,6 +177,8 @@ export default function TransaccionModal({ isOpen, onClose, onSave, transaccion 
           fecha: fechaISO,
           notas: notas.trim() || null,
           transferencia_par_id: null,
+          es_gasto_casa: esGastoCasa,
+          household_bucket_id: householdBucketId,
         };
         await onSave(payload);
       }
