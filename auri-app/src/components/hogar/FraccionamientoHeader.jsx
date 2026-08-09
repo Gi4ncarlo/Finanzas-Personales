@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { formatARS } from '../../utils/currency';
-import { Home, User, Wallet, Calculator, Settings2, ShieldCheck, Calendar, Info, CircleDot } from 'lucide-react';
+import { Home, User, Wallet, Calculator, Settings2, ShieldCheck, Calendar, Info, PlusCircle } from 'lucide-react';
+import SumarFondosModal from './SumarFondosModal';
 
 export default function FraccionamientoHeader({ 
   settings, 
   onUpdateSettings, 
   onOpenCalculator,
+  onAddFunds,
+  accounts = [],
   totalPresupuestadoCasa,
   totalGastadoCasa,
   totalDebitoAutomaticoActivo,
@@ -16,6 +19,7 @@ export default function FraccionamientoHeader({
   autoExpenses = []
 }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSumarFondosOpen, setIsSumarFondosOpen] = useState(false);
   const [hoveredCard, setHoveredCard] = useState(null); // 'saldo' | 'presupuesto' | 'casa' | 'personal'
   
   // Valores manuales iniciales
@@ -116,9 +120,9 @@ export default function FraccionamientoHeader({
           </p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           <button
-            onClick={onOpenCalculator}
+            onClick={() => setIsSumarFondosOpen(true)}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -126,6 +130,27 @@ export default function FraccionamientoHeader({
               backgroundColor: 'var(--color-gold)',
               color: '#000',
               border: 'none',
+              borderRadius: '8px',
+              padding: '10px 18px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontSize: '0.9rem',
+              boxShadow: '0 4px 14px rgba(201, 168, 76, 0.3)'
+            }}
+          >
+            <PlusCircle size={18} />
+            <span>+ Sumar Fondos</span>
+          </button>
+
+          <button
+            onClick={onOpenCalculator}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              backgroundColor: 'var(--color-surface-2)',
+              color: 'var(--color-text)',
+              border: '1px solid var(--color-border)',
               borderRadius: '8px',
               padding: '10px 16px',
               fontWeight: 600,
@@ -144,7 +169,7 @@ export default function FraccionamientoHeader({
               alignItems: 'center',
               gap: '8px',
               backgroundColor: 'var(--color-surface-2)',
-              color: 'var(--color-text)',
+              color: 'var(--color-text-muted)',
               border: '1px solid var(--color-border)',
               borderRadius: '8px',
               padding: '10px 16px',
@@ -154,7 +179,7 @@ export default function FraccionamientoHeader({
             }}
           >
             <Settings2 size={18} />
-            <span>Modificar Valores Manuales</span>
+            <span>Valores Manuales</span>
           </button>
         </div>
       </div>
@@ -565,6 +590,16 @@ export default function FraccionamientoHeader({
           </div>
         </div>
       )}
+
+      {/* Modal Sumar Fondos */}
+      <SumarFondosModal
+        isOpen={isSumarFondosOpen}
+        onClose={() => setIsSumarFondosOpen(false)}
+        onAddFunds={onAddFunds}
+        accounts={accounts}
+        currentSaldoManual={saldoManual}
+        currentMontoCasa={montoDestinadoCasa}
+      />
     </div>
   );
 }

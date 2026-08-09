@@ -21,12 +21,21 @@ export const AuthProvider = ({ children }) => {
       }
     });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Listen for auth changes (token refreshes, tab refocus, sign in/out)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
-      setUser(session?.user || null);
+      setUser(prevUser => {
+        if (prevUser?.id === session?.user?.id && event === 'TOKEN_REFRESHED') {
+          return prevUser; // Keep existing object reference to avoid child component re-renders
+        }
+        return session?.user || null;
+      });
+
       if (session?.user) {
-        fetchProfile(session.user.id);
+        // Only fetch profile on explicit sign in or if profile isn't loaded yet
+        if (event === 'SIGNED_IN' || event === 'USER_UPDATED' || !profile) {
+          fetchProfile(session.user.id);
+        }
       } else {
         setProfile(null);
         setLoading(false);
@@ -45,7 +54,10 @@ export const AuthProvider = ({ children }) => {
         .single();
         
       if (error) throw error;
-      setProfile(data);
+      setProfile(prev => {
+        if (JSON.stringify(prev) === JSON.stringify(data)) return prev;
+        return data;
+      });
     } catch (error) {
       console.error('Error fetching profile:', error.message);
     } finally {

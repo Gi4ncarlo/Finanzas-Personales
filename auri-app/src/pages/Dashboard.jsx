@@ -200,7 +200,7 @@ export default function Dashboard() {
           <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: 'var(--color-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', color: 'var(--color-gold)' }}>
             <LayoutDashboard size={32} />
           </div>
-          <h2 style={{ fontSize: '1.5rem', marginBottom: '12px' }}>¡Bienvenido a Auri! ✦</h2>
+          <h2 style={{ fontSize: '1.5rem', marginBottom: '12px', fontFamily: 'Georgia, serif' }}>¡Bienvenido a Aurelius! 🏛️</h2>
           <p style={{ color: 'var(--color-text-muted)', marginBottom: '24px', maxWidth: '400px' }}>
             Empezá a tomar el control de tu dinero. Creá tu primera cuenta o registrá un movimiento para ver la magia de los gráficos.
           </p>

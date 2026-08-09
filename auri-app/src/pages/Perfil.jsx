@@ -190,7 +190,7 @@ export default function Perfil() {
             </div>
 
             <div>
-              <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>{profile?.nombre || 'Usuario Auri'}</div>
+              <div style={{ fontWeight: 600, fontSize: '1.1rem' }}>{profile?.nombre || 'Usuario Aurelius'}</div>
               <div style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>{user?.email}</div>
             </div>
 

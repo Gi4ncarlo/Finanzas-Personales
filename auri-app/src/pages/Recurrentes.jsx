@@ -95,7 +95,7 @@ export default function Recurrentes() {
             Gastos Recurrentes
           </h1>
           <p style={{ color: 'var(--color-text-muted)' }}>
-            Definí tus gastos fijos y Auri los registrará automáticamente cada período.
+            Definí tus gastos fijos y Aurelius los registrará automáticamente cada período.
           </p>
         </div>
         <button className="btn btn-primary" onClick={openCreate} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 20px' }}>

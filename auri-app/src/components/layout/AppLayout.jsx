@@ -83,8 +83,9 @@ export default function AppLayout() {
         zIndex: 10
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '16px', width: isSidebarCollapsed ? '64px' : '240px', transition: 'width 0.3s' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-gold)', fontWeight: 700, fontSize: '1.2rem', letterSpacing: '1px' }}>
-            ✦ {!isSidebarCollapsed && <span>AURI</span>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--color-gold)', fontWeight: 700, fontSize: '1.2rem', letterSpacing: '2px' }}>
+            <img src="/marcus_aurelius.jpg" alt="Aurelius" style={{ width: '32px', height: '32px', borderRadius: '50%', border: '1px solid var(--color-gold)', objectFit: 'cover' }} />
+            {!isSidebarCollapsed && <span style={{ fontFamily: 'Georgia, serif', fontWeight: 800, textTransform: 'uppercase' }}>AURELIUS</span>}
           </div>
         </div>
 

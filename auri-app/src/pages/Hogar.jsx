@@ -66,9 +66,9 @@ export default function Hogar() {
   const currentYearMonth = new Date().toISOString().slice(0, 7);
 
   // Cargar todos los datos
-  const loadData = useCallback(async (isInitial = false) => {
-    if (!user) return;
-    if (isInitial) setLoading(true);
+  const loadData = useCallback(async (isSilent = false) => {
+    if (!user?.id) return;
+    if (!isSilent) setLoading(true);
     try {
       const [accRes, catRes] = await Promise.all([
         supabase.from('accounts').select('*').eq('user_id', user.id),
@@ -95,13 +95,17 @@ export default function Hogar() {
       console.error('Error al cargar datos del hogar:', err);
       toast.error('Error al cargar datos de control del hogar');
     } finally {
-      if (isInitial) setLoading(false);
+      setLoading(false);
     }
-  }, [user, currentYearMonth]);
+  }, [user?.id, currentYearMonth, toast]);
 
   useEffect(() => {
-    loadData(true);
-  }, [user, currentYearMonth]);
+    if (user?.id) {
+      // Only show full loading skeleton if we don't have buckets in state
+      const hasData = buckets.length > 0;
+      loadData(hasData); // isSilent = true if we already have data
+    }
+  }, [user?.id, currentYearMonth]);
 
   // SWR para transacciones del mes seleccionado
   const firstDayOfMonth = `${selectedMonth}-01`;
@@ -278,6 +282,64 @@ export default function Hogar() {
     const updated = await saveHouseholdSettings(user.id, newSettings);
     setSettings(updated);
     toast.success('Valores manuales actualizados');
+  };
+
+  const handleAddFunds = async ({ monto, aumentoCasa, aumentoPersonal, modo = 'sumar', accountId }) => {
+    const currentSaldo = settings?.saldo_manual !== undefined ? settings.saldo_manual : 11400000;
+    const currentMontoCasa = settings?.monto_destinado_casa !== undefined ? settings.monto_destinado_casa : 2000000;
+
+    const newSaldoManual = Math.max(0, currentSaldo + monto);
+    const newMontoCasa = Math.max(0, currentMontoCasa + aumentoCasa);
+
+    const newSettings = {
+      ...settings,
+      regla_tipo: 'manual',
+      saldo_manual: newSaldoManual,
+      monto_destinado_casa: newMontoCasa
+    };
+
+    const updated = await saveHouseholdSettings(user.id, newSettings);
+    setSettings(updated);
+
+    // Si se seleccionó una cuenta bancaria/billetera real, registrar la transacción correspondiente
+    if (accountId) {
+      try {
+        const esIngreso = monto > 0;
+        const absMonto = Math.abs(monto);
+
+        await supabase.from('transactions').insert({
+          user_id: user.id,
+          account_id: accountId,
+          tipo: esIngreso ? 'ingreso' : 'egreso',
+          monto: absMonto,
+          moneda: 'ARS',
+          descripcion: esIngreso 
+            ? `Ingreso de Fondos ${aumentoCasa > 0 ? '(Presupuesto Casa)' : '(Personal)'}`
+            : `Ajuste / Descuento de Fondos ${aumentoCasa < 0 ? '(Presupuesto Casa)' : '(Personal)'}`,
+          fecha: new Date().toISOString().slice(0, 10),
+          es_gasto_casa: aumentoCasa !== 0
+        });
+
+        // Actualizar saldo de la cuenta
+        const targetAcc = accounts.find(a => a.id === accountId);
+        if (targetAcc) {
+          const actualSaldo = Number(targetAcc.saldo_inicial || 0);
+          await supabase.from('accounts').update({
+            saldo_inicial: esIngreso ? actualSaldo + absMonto : actualSaldo - absMonto
+          }).eq('id', accountId);
+        }
+
+        mutateTx();
+      } catch (err) {
+        console.error('Error al registrar transacción de fondos:', err);
+      }
+    }
+
+    if (monto >= 0) {
+      toast.success(`¡Se sumaron ${formatARS(monto)} a tu presupuesto!`);
+    } else {
+      toast.success(`¡Se restaron ${formatARS(Math.abs(monto))} de tu presupuesto!`);
+    }
   };
 
   const handleSaveBucket = async (bucketData) => {
@@ -566,6 +628,8 @@ export default function Hogar() {
           <FraccionamientoHeader
             settings={settings}
             onUpdateSettings={handleUpdateSettings}
+            onAddFunds={handleAddFunds}
+            accounts={accounts}
             onOpenCalculator={() => setIsCalculatorOpen(true)}
             totalPresupuestadoCasa={totalPresupuestadoCasa}
             totalGastadoCasa={totalGastadoCasa}

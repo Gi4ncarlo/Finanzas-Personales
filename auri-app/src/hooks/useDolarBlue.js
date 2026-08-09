@@ -7,24 +7,31 @@ const DOLAR_ENDPOINTS = {
   ccl:     'https://dolarapi.com/v1/dolares/contadoconliqui',
 };
 
+// Global in-memory cache to share rate data across components instantly
+const rateCache = {};
+
 /**
  * Hook reutilizable para obtener cotización del dólar.
  * @param {string} tipo - 'oficial' (Banco Nación) | 'blue' | 'mep' | 'ccl' (default: 'oficial')
  * @returns {{ compra, venta, nombre, loading, error, refetch }}
  */
 export default function useDolarRate(tipo = 'oficial') {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const endpoint = DOLAR_ENDPOINTS[tipo] || DOLAR_ENDPOINTS.blue;
+  const cachedEntry = rateCache[tipo];
+
+  const [data, setData] = useState(cachedEntry?.data || null);
+  const [loading, setLoading] = useState(!cachedEntry?.data);
   const [error, setError] = useState(null);
 
-  const endpoint = DOLAR_ENDPOINTS[tipo] || DOLAR_ENDPOINTS.blue;
-
-  const fetchDolar = useCallback(async () => {
+  const fetchDolar = useCallback(async (isSilent = false) => {
     try {
+      if (!isSilent && !rateCache[tipo]?.data) setLoading(true);
       setError(null);
       const response = await fetch(endpoint);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const json = await response.json();
+      
+      rateCache[tipo] = { data: json, timestamp: Date.now() };
       setData(json);
     } catch (err) {
       console.error('Error fetching dolar:', err);
@@ -32,13 +39,23 @@ export default function useDolarRate(tipo = 'oficial') {
     } finally {
       setLoading(false);
     }
-  }, [endpoint]);
+  }, [endpoint, tipo]);
 
   useEffect(() => {
-    fetchDolar();
-    const interval = setInterval(fetchDolar, 300000); // 5 min cache
+    // If cache is fresh (< 5 mins), don't trigger loading state
+    const cached = rateCache[tipo];
+    const isFresh = cached && (Date.now() - cached.timestamp < 300000);
+
+    if (!isFresh) {
+      fetchDolar(Boolean(cached?.data)); // Silent if we have stale data
+    } else if (!data) {
+      setData(cached.data);
+      setLoading(false);
+    }
+
+    const interval = setInterval(() => fetchDolar(true), 300000); // 5 min cache
     return () => clearInterval(interval);
-  }, [fetchDolar]);
+  }, [fetchDolar, tipo]);
 
   return {
     compra: data?.compra || null,
@@ -46,7 +63,7 @@ export default function useDolarRate(tipo = 'oficial') {
     nombre: tipo === 'oficial' ? 'Banco Nación' : (data?.nombre || tipo),
     loading,
     error,
-    refetch: fetchDolar,
+    refetch: () => fetchDolar(false),
     // Alias for backward compat
     dolarBlue: data,
   };

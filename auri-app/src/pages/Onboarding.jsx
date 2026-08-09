@@ -67,7 +67,7 @@ export default function Onboarding() {
   return (
     <div style={{ maxWidth: '400px', margin: '0 auto', paddingTop: '48px' }}>
       <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-        <h1 style={{ color: 'var(--color-gold)', marginBottom: '8px' }}>Bienvenido a Auri</h1>
+        <h1 style={{ color: 'var(--color-gold)', marginBottom: '8px', fontFamily: 'Georgia, serif' }}>Bienvenido a Aurelius</h1>
         <p style={{ color: 'var(--color-text-muted)' }}>Configuremos tu espacio financiero</p>
       </div>
 
