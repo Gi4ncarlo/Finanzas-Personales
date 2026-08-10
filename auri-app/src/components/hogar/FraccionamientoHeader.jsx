@@ -344,6 +344,29 @@ export default function FraccionamientoHeader({
             <span style={{ color: '#61AFEF', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Home size={16} /> Fondo Casa (Supervivencia)
             </span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsSumarFondosOpen(true);
+              }}
+              title="Sumar / Restar fondos de Casa"
+              style={{
+                backgroundColor: 'rgba(97, 175, 239, 0.2)',
+                color: '#61AFEF',
+                border: '1px solid rgba(97, 175, 239, 0.4)',
+                borderRadius: '6px',
+                padding: '2px 8px',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}
+            >
+              <PlusCircle size={12} />
+              <span>+/- Fondos</span>
+            </button>
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: '#61AFEF' }}>
             {formatARS(fondoCasaDisponible)}
@@ -599,6 +622,7 @@ export default function FraccionamientoHeader({
         accounts={accounts}
         currentSaldoManual={saldoManual}
         currentMontoCasa={montoDestinadoCasa}
+        currentPresupuestoPrevisto={presupuestoPrevisto}
       />
     </div>
   );

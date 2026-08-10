@@ -287,15 +287,18 @@ export default function Hogar() {
   const handleAddFunds = async ({ monto, aumentoCasa, aumentoPersonal, modo = 'sumar', accountId }) => {
     const currentSaldo = settings?.saldo_manual !== undefined ? settings.saldo_manual : 11400000;
     const currentMontoCasa = settings?.monto_destinado_casa !== undefined ? settings.monto_destinado_casa : 2000000;
+    const currentPresupuesto = settings?.presupuesto_previsto_manual !== undefined ? settings.presupuesto_previsto_manual : 3000000;
 
     const newSaldoManual = Math.max(0, currentSaldo + monto);
     const newMontoCasa = Math.max(0, currentMontoCasa + aumentoCasa);
+    const newPresupuestoPrevisto = Math.max(0, currentPresupuesto + aumentoCasa);
 
     const newSettings = {
       ...settings,
       regla_tipo: 'manual',
       saldo_manual: newSaldoManual,
-      monto_destinado_casa: newMontoCasa
+      monto_destinado_casa: newMontoCasa,
+      presupuesto_previsto_manual: newPresupuestoPrevisto
     };
 
     const updated = await saveHouseholdSettings(user.id, newSettings);

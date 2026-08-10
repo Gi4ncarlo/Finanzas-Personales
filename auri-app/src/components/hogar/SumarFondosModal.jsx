@@ -8,7 +8,8 @@ export default function SumarFondosModal({
   onAddFunds,
   accounts = [],
   currentSaldoManual = 0,
-  currentMontoCasa = 0
+  currentMontoCasa = 0,
+  currentPresupuestoPrevisto = 3000000
 }) {
   const [modo, setModo] = useState('sumar'); // 'sumar' | 'restar'
   const [monto, setMonto] = useState('');
@@ -41,6 +42,7 @@ export default function SumarFondosModal({
 
   const nuevoSaldoTotal = Math.max(0, currentSaldoManual + cambioTotal);
   const nuevoMontoCasa = Math.max(0, currentMontoCasa + cambioCasa);
+  const nuevoPresupuestoPrevisto = Math.max(0, currentPresupuestoPrevisto + cambioCasa);
   const currentPersonal = currentSaldoManual - currentMontoCasa;
   const nuevoMontoPersonal = Math.max(0, currentPersonal + cambioPersonal);
 
@@ -288,6 +290,13 @@ export default function SumarFondosModal({
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ color: 'var(--color-gold)' }}>Presupuesto Previsto:</span>
+              <span style={{ fontWeight: 700, color: 'var(--color-gold)' }}>
+                {formatARS(currentPresupuestoPrevisto)} <ArrowRight size={12} style={{ margin: '0 4px' }} /> {formatARS(nuevoPresupuestoPrevisto)} ({esSumar ? '+' : ''}{formatARS(cambioCasa)})
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ color: '#61AFEF' }}>Fondo Casa Asignado:</span>
               <span style={{ fontWeight: 700, color: '#61AFEF' }}>
                 {formatARS(currentMontoCasa)} <ArrowRight size={12} style={{ margin: '0 4px' }} /> {formatARS(nuevoMontoCasa)} ({esSumar ? '+' : ''}{formatARS(cambioCasa)})
@@ -297,7 +306,7 @@ export default function SumarFondosModal({
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ color: '#98C379' }}>Dinero Mío Personal:</span>
               <span style={{ fontWeight: 700, color: '#98C379' }}>
-                {formatARS(currentPersonal)} <ArrowRight size={12} style={{ margin: '0 4px' }} /> {formatARS(nuevoMontoPersonal)} ({esSumar ? '+' : ''}{formatARS(cambioPersonal)})
+                {formatARS(currentPersonal)} <ArrowRight size={12} style={{ margin: '0 4px' }} /> {formatARS(nuevoMontoPersonal)} ({destino === 'casa' ? '$0 - Intacto 🛡️' : `${esSumar ? '+' : ''}${formatARS(cambioPersonal)}`})
               </span>
             </div>
           </div>
