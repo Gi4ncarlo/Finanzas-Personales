@@ -7,7 +7,7 @@ const MONTHS = [
   'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ];
 
-export default function DatePickerModern({ value, onChange, placeholder = 'Seleccionar fecha', label, containerStyle = {} }) {
+export default function DatePickerModern({ value, onChange, placeholder = 'Seleccionar fecha', label, align = 'left', containerStyle = {} }) {
   const [isOpen, setIsOpen] = useState(false);
   const [currentDate, setCurrentDate] = useState(value ? new Date(value + 'T12:00:00') : new Date());
   const containerRef = useRef(null);
@@ -33,10 +33,6 @@ export default function DatePickerModern({ value, onChange, placeholder = 'Selec
 
   const changeMonth = (offset) => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + offset, 1));
-  };
-
-  const changeYear = (offset) => {
-    setCurrentDate(new Date(currentDate.getFullYear() + offset, currentDate.getMonth(), 1));
   };
 
   // Calendar logic
@@ -73,17 +69,17 @@ export default function DatePickerModern({ value, onChange, placeholder = 'Selec
 
   return (
     <div className="datepicker-container" ref={containerRef} style={{ position: 'relative', width: '100%', userSelect: 'none', ...containerStyle }}>
-      {label && <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '8px', fontWeight: 500, color: 'var(--color-text-muted)' }}>{label}</label>}
+      {label && <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', marginBottom: '6px', fontWeight: 600, color: 'var(--color-text-muted)' }}><CalendarIcon size={15} /><span>{label}</span></label>}
       <div 
         onClick={toggleCalendar}
         style={{
           display: 'flex', alignItems: 'center', gap: '10px', backgroundColor: 'var(--color-surface-2)',
-          border: isOpen ? '1px solid var(--color-gold)' : '1px solid var(--color-border)', borderRadius: '8px', padding: '12px',
+          border: isOpen ? '1px solid var(--color-gold)' : '1px solid var(--color-border)', borderRadius: '8px', padding: '10px 12px',
           cursor: 'pointer', transition: 'all 0.2s ease', position: 'relative'
         }}
       >
-        <CalendarIcon size={18} color={value ? 'var(--color-gold)' : 'var(--color-text-muted)'} />
-        <span style={{ fontSize: '0.95rem', color: value ? 'var(--color-text)' : 'var(--color-text-muted)', flex: 1 }}>
+        <CalendarIcon size={16} color={value ? 'var(--color-gold)' : 'var(--color-text-muted)'} />
+        <span style={{ fontSize: '0.9rem', fontWeight: 600, color: value ? 'var(--color-text)' : 'var(--color-text-muted)', flex: 1 }}>
           {value ? new Date(value + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : placeholder}
         </span>
         {value && (
@@ -98,30 +94,34 @@ export default function DatePickerModern({ value, onChange, placeholder = 'Selec
 
       {isOpen && (
         <div style={{
-          position: 'absolute', top: 'calc(100% + 8px)', left: 0, zIndex: 1000, width: '280px',
+          position: 'absolute', top: 'calc(100% + 6px)',
+          left: align === 'right' ? 'auto' : 0,
+          right: align === 'right' ? 0 : 'auto',
+          zIndex: 1000, width: '270px',
           backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '12px',
-          boxShadow: '0 12px 32px rgba(0,0,0,0.5)', padding: '16px', animation: 'calendarAppear 0.2s ease-out'
+          boxShadow: '0 12px 36px rgba(0,0,0,0.6)', padding: '14px', animation: 'calendarAppear 0.18s ease-out'
         }}>
           <style>{`
-            @keyframes calendarAppear { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-            .calendar-day { display: flex; align-items: center; justify-content: center; height: 32px; font-size: 0.85rem; border-radius: 6px; cursor: pointer; transition: all 0.15s; }
+            @keyframes calendarAppear { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+            .calendar-day { display: flex; align-items: center; justify-content: center; height: 32px; font-size: 0.85rem; border-radius: 6px; cursor: pointer; transition: all 0.15s; color: var(--color-text); }
             .calendar-day.inactive { color: var(--color-text-muted); opacity: 0.3; }
             .calendar-day:hover:not(.inactive) { background-color: var(--color-surface-2); }
-            .calendar-day.selected { background-color: var(--color-gold) !important; color: #000; font-weight: 700; }
+            .calendar-day.selected { background-color: var(--color-gold) !important; color: #000000 !important; font-weight: 800 !important; }
             .calendar-day.today { border: 1px solid var(--color-gold); color: var(--color-gold); }
+            .calendar-day.selected.today { background-color: var(--color-gold) !important; color: #000000 !important; font-weight: 800 !important; border: 1px solid #FFFFFF; }
           `}</style>
 
           {/* Header */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <button type="button" onClick={() => changeMonth(-1)} className="btn-icon" style={{ padding: '4px' }}><ChevronLeft size={18} /></button>
-            <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--color-text)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+            <button type="button" onClick={() => changeMonth(-1)} className="btn-icon" style={{ padding: '4px', background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}><ChevronLeft size={18} /></button>
+            <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--color-text)' }}>
               {MONTHS[currentDate.getMonth()]} {currentDate.getFullYear()}
             </div>
-            <button type="button" onClick={() => changeMonth(1)} className="btn-icon" style={{ padding: '4px' }}><ChevronRight size={18} /></button>
+            <button type="button" onClick={() => changeMonth(1)} className="btn-icon" style={{ padding: '4px', background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer' }}><ChevronRight size={18} /></button>
           </div>
 
           {/* Day labels */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '6px' }}>
             {DAYS.map(d => (
               <div key={d} style={{ textAlign: 'center', fontSize: '0.7rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>{d}</div>
             ))}
@@ -141,7 +141,7 @@ export default function DatePickerModern({ value, onChange, placeholder = 'Selec
           </div>
 
           {/* Footer */}
-          <div style={{ marginTop: '16px', borderTop: '1px solid var(--color-border)', paddingTop: '12px', display: 'flex', justifyContent: 'center' }}>
+          <div style={{ marginTop: '14px', borderTop: '1px solid var(--color-border)', paddingTop: '10px', display: 'flex', justifyContent: 'center' }}>
              <button 
                 type="button"
                 onClick={() => {
@@ -149,7 +149,7 @@ export default function DatePickerModern({ value, onChange, placeholder = 'Selec
                     setCurrentDate(today);
                     handleDateClick(today.getDate());
                 }}
-                style={{ background: 'none', border: 'none', color: 'var(--color-gold)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--color-gold)', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer' }}
              >
                 Hoy: {new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })}
              </button>

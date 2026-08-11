@@ -139,7 +139,7 @@ export default function FraccionamientoHeader({
             }}
           >
             <PlusCircle size={18} />
-            <span>+ Sumar Fondos</span>
+            <span>+ Movimiento Hogar</span>
           </button>
 
           <button
@@ -620,9 +620,11 @@ export default function FraccionamientoHeader({
         onClose={() => setIsSumarFondosOpen(false)}
         onAddFunds={onAddFunds}
         accounts={accounts}
+        buckets={buckets}
         currentSaldoManual={saldoManual}
         currentMontoCasa={montoDestinadoCasa}
         currentPresupuestoPrevisto={presupuestoPrevisto}
+        totalGastadoCasa={totalGastadoCasa}
       />
     </div>
   );

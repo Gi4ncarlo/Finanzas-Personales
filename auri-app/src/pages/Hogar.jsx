@@ -30,6 +30,17 @@ import {
   PieChart as RechartsPieChart, Pie, Cell, Legend 
 } from 'recharts';
 
+function formatLocalDateString(dateStr) {
+  if (!dateStr) return '';
+  const cleanStr = String(dateStr).slice(0, 10);
+  const parts = cleanStr.split('-');
+  if (parts.length === 3) {
+    const [year, month, day] = parts;
+    return `${parseInt(day, 10)}/${parseInt(month, 10)}/${year}`;
+  }
+  return dateStr;
+}
+
 export default function Hogar() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -38,6 +49,13 @@ export default function Hogar() {
   // Gestión de Pestañas
   const [activeTab, setActiveTab] = useState('gestion'); // 'gestion' | 'estadisticas'
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7)); // 'YYYY-MM'
+
+  // Filtros y Criterios de Agrupación/Ordenamiento para el Seguimiento Detallado
+  const [sortCriterion, setSortCriterion] = useState('fecha_desc'); // 'fecha_desc' | 'fecha_asc' | 'monto_desc' | 'monto_asc' | 'descripcion_asc'
+  const [groupByCriterion, setGroupByCriterion] = useState('none'); // 'none' | 'sobre' | 'tipo'
+  const [filterTipo, setFilterTipo] = useState('all'); // 'all' | 'gasto' | 'ingreso' | 'auto'
+  const [filterBucket, setFilterBucket] = useState('all'); // 'all' | bucket_id
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Estados de datos
   const [settings, setSettings] = useState(null);
@@ -143,25 +161,104 @@ export default function Hogar() {
     return map;
   }, [autoExpenses]);
 
-  // Calcular Gasto Mensual Real por Sobre (incluyendo transacciones reales + débitos automáticos virtuales + servicios pagados)
+  // Helper para determinar si una transacción es de Casa
+  const isHouseTransaction = useCallback((tx) => {
+    if (!tx) return false;
+    if (tx.es_gasto_casa) return true;
+    if (tx.household_bucket_id) return true;
+
+    const localMappingKey = `auri_local_tx_household_mapping_${user?.id}`;
+    const localMapping = JSON.parse(localStorage.getItem(localMappingKey) || '{}');
+
+    if (localMapping[tx.id]?.es_gasto_casa) return true;
+    if (localMapping[tx.id]?.household_bucket_id) return true;
+
+    const cleanDesc = tx.descripcion ? tx.descripcion.trim() : '';
+    if (cleanDesc && localMapping['desc_' + cleanDesc]?.es_gasto_casa) return true;
+
+    // Patrones comunes si es un gasto manual del hogar
+    if (cleanDesc) {
+      const d = cleanDesc.toLowerCase();
+      if (
+        d.includes('gasto casa') || 
+        d.includes('presupuesto casa') || 
+        d.includes('compra pollo') || 
+        d.includes('nafta auto') ||
+        d.includes('débito automático') ||
+        d.includes('pizza') ||
+        d.includes('vacunas')
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }, [user?.id]);
+
+  // Gasto Mensual Real Total de la Casa
+  const totalGastadoCasa = useMemo(() => {
+    if (!user) return 0;
+
+    // 1. Transacciones manuales clasificadas como de casa (Egresos)
+    let manualSum = 0;
+    if (monthTransactions) {
+      monthTransactions.forEach(tx => {
+        if (tx.tipo === 'egreso' && isHouseTransaction(tx)) {
+          manualSum += Number(tx.monto || 0);
+        }
+      });
+    }
+
+    // 2. Débitos automáticos activos
+    const autoSum = autoExpenses
+      .filter(ae => ae.activo)
+      .reduce((sum, ae) => sum + Number(ae.monto || 0), 0);
+
+    // 3. Servicios marcados como pagados que no tienen transacción real registrada
+    let serviceSum = 0;
+    services.forEach(s => {
+      const isPaid = !!paidServices[s.id];
+      if (isPaid) {
+        const hasRealTx = monthTransactions?.some(tx => 
+          tx.tipo === 'egreso' && 
+          (tx.descripcion?.toLowerCase().includes(`pago: ${s.nombre}`.toLowerCase()) || 
+           tx.descripcion?.toLowerCase().includes(s.nombre.toLowerCase()))
+        );
+        if (!hasRealTx) {
+          serviceSum += Number(s.monto_estimado || 0);
+        }
+      }
+    });
+
+    return manualSum + autoSum + serviceSum;
+  }, [monthTransactions, autoExpenses, services, paidServices, user, isHouseTransaction]);
+
+  // Gasto Mensual Real Personal (Excluye rigurosamente las de casa)
+  const totalGastadoPersonal = useMemo(() => {
+    if (!monthTransactions) return 0;
+
+    return monthTransactions
+      .filter(tx => tx.tipo === 'egreso' && !isHouseTransaction(tx))
+      .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
+  }, [monthTransactions, isHouseTransaction]);
+
+  // Desglose por sobre del hogar
   const spendingPerBucket = useMemo(() => {
     if (!buckets) return {};
 
     const map = {};
     buckets.forEach(b => { 
-      // Empezar con el débito automático de este sobre
       map[b.id] = autoExpensesByBucket[b.id] || 0; 
     });
 
     const localMappingKey = `auri_local_tx_household_mapping_${user?.id}`;
     const localMapping = JSON.parse(localStorage.getItem(localMappingKey) || '{}');
 
-    // 1. Agregar transacciones reales
     if (monthTransactions) {
       monthTransactions.forEach(tx => {
-        if (tx.tipo === 'egreso') {
-          // Si no existe la columna en Supabase, buscamos el mapeo en el localStorage
-          const hBucketId = tx.household_bucket_id || localMapping[tx.id]?.household_bucket_id;
+        if (tx.tipo === 'egreso' && isHouseTransaction(tx)) {
+          const hBucketId = tx.household_bucket_id || 
+            localMapping[tx.id]?.household_bucket_id || 
+            localMapping['desc_' + tx.descripcion?.trim()]?.household_bucket_id;
 
           if (hBucketId && map[hBucketId] !== undefined) {
             map[hBucketId] += Number(tx.monto || 0);
@@ -175,11 +272,9 @@ export default function Hogar() {
       });
     }
 
-    // 2. Agregar servicios marcados como "Pagado" que no tengan una transacción real registrada
     services.forEach(s => {
       const isPaid = !!paidServices[s.id];
       if (isPaid) {
-        // Verificar si ya existe una transacción para este servicio
         const hasRealTx = monthTransactions?.some(tx => 
           tx.tipo === 'egreso' && 
           (tx.descripcion?.toLowerCase().includes(`pago: ${s.nombre}`.toLowerCase()) || 
@@ -193,49 +288,36 @@ export default function Hogar() {
     });
 
     return map;
-  }, [monthTransactions, buckets, autoExpensesByBucket, services, paidServices, user]);
+  }, [monthTransactions, buckets, autoExpensesByBucket, services, paidServices, user, isHouseTransaction]);
 
   const totalPresupuestadoCasa = useMemo(() => {
     return buckets.reduce((acc, b) => acc + Number(b.monto_presupuestado || 0), 0);
   }, [buckets]);
 
-  const totalGastadoCasa = useMemo(() => {
-    if (!spendingPerBucket) return 0;
-    return Object.values(spendingPerBucket).reduce((acc, val) => acc + Number(val || 0), 0);
-  }, [spendingPerBucket]);
-
-  const totalGastadoPersonal = useMemo(() => {
-    if (!monthTransactions) return 0;
-    const localMappingKey = `auri_local_tx_household_mapping_${user?.id}`;
-    const localMapping = JSON.parse(localStorage.getItem(localMappingKey) || '{}');
-
-    return monthTransactions
-      .filter(tx => {
-        if (tx.tipo !== 'egreso') return false;
-        const isHouse = tx.es_gasto_casa || !!localMapping[tx.id]?.es_gasto_casa;
-        return !isHouse;
-      })
-      .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
-  }, [monthTransactions, user]);
-
   // Lista unificada de transacciones de casa para la tabla de estadísticas
   const householdTransactionsList = useMemo(() => {
     if (!monthTransactions) return [];
-    const localMappingKey = `auri_local_tx_household_mapping_${user?.id}`;
-    const localMapping = JSON.parse(localStorage.getItem(localMappingKey) || '{}');
 
     const manual = monthTransactions
-      .filter(tx => tx.tipo === 'egreso' && (tx.es_gasto_casa || !!localMapping[tx.id]?.es_gasto_casa))
+      .filter(tx => isHouseTransaction(tx))
       .map(tx => {
-        const bId = tx.household_bucket_id || localMapping[tx.id]?.household_bucket_id;
+        const localMappingKey = `auri_local_tx_household_mapping_${user?.id}`;
+        const localMapping = JSON.parse(localStorage.getItem(localMappingKey) || '{}');
+        const bId = tx.household_bucket_id || 
+          localMapping[tx.id]?.household_bucket_id || 
+          localMapping['desc_' + tx.descripcion?.trim()]?.household_bucket_id;
         const bName = buckets.find(b => b.id === bId)?.nombre || 'General Casa';
+        const isIngreso = tx.tipo === 'ingreso';
+        const rawDate = tx.fecha ? String(tx.fecha).slice(0, 10) : new Date().toISOString().slice(0, 10);
         return {
           id: tx.id,
-          fecha: new Date(tx.fecha).toISOString().slice(0, 10),
+          fecha: rawDate,
           descripcion: tx.descripcion,
-          monto: tx.monto,
-          tipo: 'Manual',
-          sobre: bName
+          monto: Number(tx.monto || 0),
+          tipo: isIngreso ? 'Ingreso Casa' : 'Gasto Manual',
+          esIngreso: isIngreso,
+          sobre: bName,
+          bucketId: bId
         };
       });
 
@@ -248,14 +330,99 @@ export default function Hogar() {
           id: ae.id,
           fecha: `${selectedMonth}-${String(ae.dia_debito).padStart(2, '0')}`,
           descripcion: `${ae.nombre} (Débito Automático)`,
-          monto: ae.monto,
+          monto: Number(ae.monto || 0),
           tipo: 'Automático',
-          sobre: bName
+          esIngreso: false,
+          sobre: bName,
+          bucketId: ae.bucket_id
         };
       });
 
-    return [...manual, ...autos].sort((a, b) => b.fecha.localeCompare(a.fecha));
-  }, [monthTransactions, autoExpenses, buckets, selectedMonth, user]);
+    return [...manual, ...autos];
+  }, [monthTransactions, autoExpenses, buckets, selectedMonth, user, isHouseTransaction]);
+
+  // Filtrado y Ordenamiento según criterios del usuario
+  const filteredAndSortedTransactions = useMemo(() => {
+    let list = [...householdTransactionsList];
+
+    // 1. Filtro por tipo
+    if (filterTipo === 'gasto') {
+      list = list.filter(item => !item.esIngreso && item.tipo !== 'Automático');
+    } else if (filterTipo === 'ingreso') {
+      list = list.filter(item => item.esIngreso);
+    } else if (filterTipo === 'auto') {
+      list = list.filter(item => item.tipo === 'Automático');
+    }
+
+    // 2. Filtro por sobre
+    if (filterBucket !== 'all') {
+      list = list.filter(item => {
+        const bucket = buckets.find(b => b.id === filterBucket);
+        return item.sobre === bucket?.nombre || item.bucketId === filterBucket;
+      });
+    }
+
+    // 3. Filtro por búsqueda
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter(item =>
+        item.descripcion.toLowerCase().includes(q) ||
+        item.sobre.toLowerCase().includes(q)
+      );
+    }
+
+    // 4. Ordenamiento por fecha / monto / descripción
+    list.sort((a, b) => {
+      if (sortCriterion === 'fecha_desc') {
+        return b.fecha.localeCompare(a.fecha);
+      } else if (sortCriterion === 'fecha_asc') {
+        return a.fecha.localeCompare(b.fecha);
+      } else if (sortCriterion === 'monto_desc') {
+        return b.monto - a.monto;
+      } else if (sortCriterion === 'monto_asc') {
+        return a.monto - b.monto;
+      } else if (sortCriterion === 'descripcion_asc') {
+        return a.descripcion.localeCompare(b.descripcion);
+      }
+      return 0;
+    });
+
+    return list;
+  }, [householdTransactionsList, filterTipo, filterBucket, searchQuery, sortCriterion, buckets]);
+
+  // Agrupamiento por criterios
+  const groupedTransactions = useMemo(() => {
+    if (groupByCriterion === 'none') return null;
+
+    const groups = {};
+
+    filteredAndSortedTransactions.forEach(item => {
+      let key = 'General Casa / Sin Sobre';
+      if (groupByCriterion === 'sobre') {
+        key = item.sobre || 'General Casa';
+      } else if (groupByCriterion === 'tipo') {
+        key = item.tipo || 'General';
+      }
+
+      if (!groups[key]) {
+        groups[key] = {
+          title: key,
+          items: [],
+          totalEgresos: 0,
+          totalIngresos: 0
+        };
+      }
+
+      groups[key].items.push(item);
+      if (item.esIngreso) {
+        groups[key].totalIngresos += item.monto;
+      } else {
+        groups[key].totalEgresos += item.monto;
+      }
+    });
+
+    return groups;
+  }, [filteredAndSortedTransactions, groupByCriterion]);
 
   // Histórico de comparación mes a mes (Simulado basado en mes actual y meses anteriores)
   const historicalComparisonData = useMemo(() => {
@@ -284,65 +451,106 @@ export default function Hogar() {
     toast.success('Valores manuales actualizados');
   };
 
-  const handleAddFunds = async ({ monto, aumentoCasa, aumentoPersonal, modo = 'sumar', accountId }) => {
+  const handleAddFunds = async ({ modo, tipo, monto, descripcion, fecha, bucketId, accountId }) => {
+    const absMonto = Math.abs(Number(monto));
+    if (!absMonto || absMonto <= 0) return;
+
+    const effectiveTipo = tipo || (modo === 'ingreso' ? 'ingreso' : 'egreso');
+    const txDate = fecha || new Date().toISOString().slice(0, 10);
+    const txDesc = descripcion?.trim() || (effectiveTipo === 'ingreso' ? 'Aporte de Fondos al Hogar' : 'Gasto Puntual del Hogar');
+
     const currentSaldo = settings?.saldo_manual !== undefined ? settings.saldo_manual : 11400000;
     const currentMontoCasa = settings?.monto_destinado_casa !== undefined ? settings.monto_destinado_casa : 2000000;
-    const currentPresupuesto = settings?.presupuesto_previsto_manual !== undefined ? settings.presupuesto_previsto_manual : 3000000;
 
-    const newSaldoManual = Math.max(0, currentSaldo + monto);
-    const newMontoCasa = Math.max(0, currentMontoCasa + aumentoCasa);
-    const newPresupuestoPrevisto = Math.max(0, currentPresupuesto + aumentoCasa);
+    if (effectiveTipo === 'ingreso') {
+      // Sumar dinero / Aporte a la casa: incrementa el fondo destinado a la casa y el saldo manual en cuenta
+      const newMontoCasa = currentMontoCasa + absMonto;
+      const newSaldoManual = currentSaldo + absMonto;
 
-    const newSettings = {
-      ...settings,
-      regla_tipo: 'manual',
-      saldo_manual: newSaldoManual,
-      monto_destinado_casa: newMontoCasa,
-      presupuesto_previsto_manual: newPresupuestoPrevisto
+      const newSettings = {
+        ...settings,
+        regla_tipo: 'manual',
+        saldo_manual: newSaldoManual,
+        monto_destinado_casa: newMontoCasa
+        // NOTA: presupuesto_previsto_manual NO se altera para no distorsionar la meta mensual fijada
+      };
+
+      const updated = await saveHouseholdSettings(user.id, newSettings);
+      setSettings(updated);
+    }
+    // Para egreso (gasto puntual como pizza, vacunas del perro, etc.):
+    // El presupuesto_previsto_manual y monto_destinado_casa permanecen intactos.
+    // Al registrar la transacción en `transactions` con es_gasto_casa: true, 
+    // totalGastadoCasa se recalcula automáticamente y descuenta el saldo disponible de casa en tiempo real.
+
+    // 1. Guardar la transacción formal en Supabase y/o LocalStorage
+    const txId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'tx-' + Date.now();
+    const txPayload = {
+      id: txId,
+      user_id: user.id,
+      account_id: accountId || null,
+      tipo: effectiveTipo,
+      monto: absMonto,
+      moneda: 'ARS',
+      descripcion: txDesc,
+      fecha: txDate,
+      es_gasto_casa: true,
+      household_bucket_id: bucketId || null
     };
 
-    const updated = await saveHouseholdSettings(user.id, newSettings);
-    setSettings(updated);
+    // Guardar el mapeo local por seguridad
+    const localMappingKey = `auri_local_tx_household_mapping_${user.id}`;
+    const currentMapping = JSON.parse(localStorage.getItem(localMappingKey) || '{}');
+    currentMapping[txId] = { 
+      es_gasto_casa: true, 
+      household_bucket_id: bucketId || null 
+    };
+    if (txDesc) {
+      currentMapping['desc_' + txDesc.trim()] = {
+        es_gasto_casa: true,
+        household_bucket_id: bucketId || null
+      };
+    }
+    localStorage.setItem(localMappingKey, JSON.stringify(currentMapping));
 
-    // Si se seleccionó una cuenta bancaria/billetera real, registrar la transacción correspondiente
+    try {
+      const { error } = await supabase.from('transactions').insert([txPayload]);
+      if (error) {
+        if (error.message?.includes('es_gasto_casa') || error.message?.includes('column') || error.code === 'PGRST204' || error.message?.includes('schema cache')) {
+          const { es_gasto_casa, household_bucket_id, ...fallbackPayload } = txPayload;
+          await supabase.from('transactions').insert([fallbackPayload]);
+        } else {
+          console.error('Error insertando en Supabase transactions:', error);
+        }
+      }
+    } catch (err) {
+      console.error('Error en Supabase insert:', err);
+    }
+
+    // 2. Si asoció cuenta bancaria real, actualizar su saldo
     if (accountId) {
       try {
-        const esIngreso = monto > 0;
-        const absMonto = Math.abs(monto);
-
-        await supabase.from('transactions').insert({
-          user_id: user.id,
-          account_id: accountId,
-          tipo: esIngreso ? 'ingreso' : 'egreso',
-          monto: absMonto,
-          moneda: 'ARS',
-          descripcion: esIngreso 
-            ? `Ingreso de Fondos ${aumentoCasa > 0 ? '(Presupuesto Casa)' : '(Personal)'}`
-            : `Ajuste / Descuento de Fondos ${aumentoCasa < 0 ? '(Presupuesto Casa)' : '(Personal)'}`,
-          fecha: new Date().toISOString().slice(0, 10),
-          es_gasto_casa: aumentoCasa !== 0
-        });
-
-        // Actualizar saldo de la cuenta
         const targetAcc = accounts.find(a => a.id === accountId);
         if (targetAcc) {
           const actualSaldo = Number(targetAcc.saldo_inicial || 0);
+          const nuevoSaldo = effectiveTipo === 'ingreso' ? actualSaldo + absMonto : actualSaldo - absMonto;
           await supabase.from('accounts').update({
-            saldo_inicial: esIngreso ? actualSaldo + absMonto : actualSaldo - absMonto
+            saldo_inicial: Math.max(0, nuevoSaldo)
           }).eq('id', accountId);
         }
-
-        mutateTx();
-      } catch (err) {
-        console.error('Error al registrar transacción de fondos:', err);
+      } catch (accErr) {
+        console.error('Error actualizando cuenta bancaria:', accErr);
       }
     }
 
-    if (monto >= 0) {
-      toast.success(`¡Se sumaron ${formatARS(monto)} a tu presupuesto!`);
+    if (effectiveTipo === 'ingreso') {
+      toast.success(`¡Ingreso registrado: "${txDesc}" por ${formatARS(absMonto)}!`);
     } else {
-      toast.success(`¡Se restaron ${formatARS(Math.abs(monto))} de tu presupuesto!`);
+      toast.success(`¡Gasto de casa registrado: "${txDesc}" por ${formatARS(absMonto)}!`);
     }
+
+    mutateTx();
+    loadData(true);
   };
 
   const handleSaveBucket = async (bucketData) => {
@@ -874,16 +1082,212 @@ export default function Hogar() {
             backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)',
             borderRadius: '16px', padding: '24px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)'
           }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '1.1rem', fontWeight: 700, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ListFilter size={20} style={{ color: 'var(--color-gold)' }} />
-              Seguimiento Detallado de Gastos de la Casa
-            </h3>
+            {/* Header Title & Counter */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ListFilter size={22} style={{ color: 'var(--color-gold)' }} />
+                Seguimiento Detallado de Movimientos de Casa
+              </h3>
+              <span style={{ backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)', padding: '4px 12px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                {filteredAndSortedTransactions.length} movimiento{filteredAndSortedTransactions.length !== 1 ? 's' : ''}
+              </span>
+            </div>
 
-            {householdTransactionsList.length === 0 ? (
+            {/* Control Bar: Búsqueda, Ordenamiento, Agrupación y Filtros */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+              gap: '12px',
+              marginBottom: '20px',
+              backgroundColor: 'var(--color-surface-2)',
+              padding: '14px',
+              borderRadius: '12px',
+              border: '1px solid var(--color-border)'
+            }}>
+              {/* Búsqueda */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '4px' }}>
+                  🔍 Buscar Movimiento
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ej: Pizza, DGO, Netflix..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%', padding: '8px 10px', borderRadius: '6px',
+                    backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)', fontSize: '0.85rem'
+                  }}
+                />
+              </div>
+
+              {/* Ordenamiento por Fechas / Monto */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-gold)', marginBottom: '4px' }}>
+                  📅 Criterio de Orden
+                </label>
+                <select
+                  value={sortCriterion}
+                  onChange={(e) => setSortCriterion(e.target.value)}
+                  style={{
+                    width: '100%', padding: '8px 10px', borderRadius: '6px',
+                    backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)', fontSize: '0.85rem', fontWeight: 600
+                  }}
+                >
+                  <option value="fecha_desc">📅 Fecha: Más reciente primero</option>
+                  <option value="fecha_asc">📅 Fecha: Más antiguo primero</option>
+                  <option value="monto_desc">💵 Monto: Mayor a menor</option>
+                  <option value="monto_asc">💵 Monto: Menor a mayor</option>
+                  <option value="descripcion_asc">🔤 Nombre: A - Z</option>
+                </select>
+              </div>
+
+              {/* Criterio de Agrupación */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#61AFEF', marginBottom: '4px' }}>
+                  📁 Agrupar Por
+                </label>
+                <select
+                  value={groupByCriterion}
+                  onChange={(e) => setGroupByCriterion(e.target.value)}
+                  style={{
+                    width: '100%', padding: '8px 10px', borderRadius: '6px',
+                    backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)', fontSize: '0.85rem', fontWeight: 600
+                  }}
+                >
+                  <option value="none">📋 Sin agrupar (Lista completa)</option>
+                  <option value="sobre">🏠 Agrupar por Sobre del Hogar</option>
+                  <option value="tipo">🏷️ Agrupar por Tipo de Movimiento</option>
+                </select>
+              </div>
+
+              {/* Filtro por Tipo */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#98C379', marginBottom: '4px' }}>
+                  🏷️ Filtrar por Tipo
+                </label>
+                <select
+                  value={filterTipo}
+                  onChange={(e) => setFilterTipo(e.target.value)}
+                  style={{
+                    width: '100%', padding: '8px 10px', borderRadius: '6px',
+                    backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)', fontSize: '0.85rem'
+                  }}
+                >
+                  <option value="all">Todos los tipos</option>
+                  <option value="gasto">Solo Gastos Manuales</option>
+                  <option value="auto">Solo Débitos Automáticos</option>
+                  <option value="ingreso">Solo Ingresos Casa</option>
+                </select>
+              </div>
+
+              {/* Filtro por Sobre */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: 'var(--color-text-muted)', marginBottom: '4px' }}>
+                  🏠 Filtrar por Sobre
+                </label>
+                <select
+                  value={filterBucket}
+                  onChange={(e) => setFilterBucket(e.target.value)}
+                  style={{
+                    width: '100%', padding: '8px 10px', borderRadius: '6px',
+                    backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)', fontSize: '0.85rem'
+                  }}
+                >
+                  <option value="all">Todos los sobres</option>
+                  {buckets.map(b => (
+                    <option key={b.id} value={b.id}>{b.nombre}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Vista Agrupada o Tabla Directa */}
+            {filteredAndSortedTransactions.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '32px', color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-                No hay movimientos registrados en la casa para este mes.
+                No se encontraron movimientos con los criterios o filtros seleccionados.
+              </div>
+            ) : groupByCriterion !== 'none' && groupedTransactions ? (
+              /* Render Agrupado */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {Object.entries(groupedTransactions).map(([groupTitle, groupData]) => (
+                  <div key={groupTitle} style={{
+                    backgroundColor: 'var(--color-surface-2)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: '12px',
+                    overflow: 'hidden'
+                  }}>
+                    {/* Header del Grupo */}
+                    <div style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                      padding: '12px 18px', backgroundColor: 'rgba(255,255,255,0.03)',
+                      borderBottom: '1px solid var(--color-border)'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--color-gold)' }}>
+                          {groupTitle}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', backgroundColor: 'var(--color-surface)', padding: '2px 8px', borderRadius: '10px', color: 'var(--color-text-muted)' }}>
+                          {groupData.items.length} ítem{groupData.items.length !== 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '0.9rem', fontWeight: 700 }}>
+                        {groupData.totalIngresos > 0 && (
+                          <span style={{ color: '#98C379', marginRight: '12px' }}>
+                            +{formatARS(groupData.totalIngresos)}
+                          </span>
+                        )}
+                        {groupData.totalEgresos > 0 && (
+                          <span style={{ color: '#E06C75' }}>
+                            -{formatARS(groupData.totalEgresos)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Tabla de ítems del grupo */}
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--color-border)', color: 'var(--color-text-muted)', textAlign: 'left' }}>
+                            <th style={{ padding: '10px 18px' }}>Fecha</th>
+                            <th style={{ padding: '10px 18px' }}>Descripción</th>
+                            <th style={{ padding: '10px 18px' }}>Tipo</th>
+                            <th style={{ padding: '10px 18px', textAlign: 'right' }}>Monto</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groupData.items.map((item) => (
+                            <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
+                              <td style={{ padding: '10px 18px', whiteSpace: 'nowrap' }}>{formatLocalDateString(item.fecha)}</td>
+                              <td style={{ padding: '10px 18px', fontWeight: 600 }}>{item.descripcion}</td>
+                              <td style={{ padding: '10px 18px' }}>
+                                <span style={{
+                                  padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600,
+                                  backgroundColor: item.esIngreso ? 'rgba(152,195,121,0.15)' : (item.tipo === 'Automático' ? 'rgba(201,168,76,0.15)' : 'rgba(97,175,239,0.15)'),
+                                  color: item.esIngreso ? '#98C379' : (item.tipo === 'Automático' ? 'var(--color-gold)' : '#61AFEF')
+                                }}>
+                                  {item.tipo}
+                                </span>
+                              </td>
+                              <td style={{ padding: '10px 18px', textAlign: 'right', fontWeight: 700, color: item.esIngreso ? '#98C379' : '#E06C75' }}>
+                                {item.esIngreso ? `+${formatARS(item.monto)}` : `-${formatARS(item.monto)}`}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
+              /* Render Tabla Directa Sin Agrupar */
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                   <thead>
@@ -896,22 +1300,22 @@ export default function Hogar() {
                     </tr>
                   </thead>
                   <tbody>
-                    {householdTransactionsList.map((item) => (
+                    {filteredAndSortedTransactions.map((item) => (
                       <tr key={item.id} style={{ borderBottom: '1px solid var(--color-border)', color: 'var(--color-text)' }}>
-                        <td style={{ padding: '12px' }}>{new Date(item.fecha).toLocaleDateString('es-AR')}</td>
+                        <td style={{ padding: '12px', whiteSpace: 'nowrap' }}>{formatLocalDateString(item.fecha)}</td>
                         <td style={{ padding: '12px', fontWeight: 600 }}>{item.descripcion}</td>
                         <td style={{ padding: '12px' }}>
                           <span style={{
                             padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600,
-                            backgroundColor: item.type === 'Automático' ? 'rgba(152,195,121,0.15)' : 'rgba(97,175,239,0.15)',
-                            color: item.type === 'Automático' ? '#98C379' : '#61AFEF'
+                            backgroundColor: item.esIngreso ? 'rgba(152,195,121,0.15)' : (item.tipo === 'Automático' ? 'rgba(201,168,76,0.15)' : 'rgba(97,175,239,0.15)'),
+                            color: item.esIngreso ? '#98C379' : (item.tipo === 'Automático' ? 'var(--color-gold)' : '#61AFEF')
                           }}>
                             {item.tipo}
                           </span>
                         </td>
                         <td style={{ padding: '12px', color: 'var(--color-text-muted)' }}>{item.sobre}</td>
-                        <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: 'var(--color-danger)' }}>
-                          -{formatARS(item.monto)}
+                        <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: item.esIngreso ? '#98C379' : '#E06C75' }}>
+                          {item.esIngreso ? `+${formatARS(item.monto)}` : `-${formatARS(item.monto)}`}
                         </td>
                       </tr>
                     ))}

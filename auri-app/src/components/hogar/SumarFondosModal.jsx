@@ -1,73 +1,79 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { formatARS } from '../../utils/currency';
-import { PlusCircle, MinusCircle, Home, User, DollarSign, ArrowRight } from 'lucide-react';
+import { PlusCircle, MinusCircle, Calendar, Wallet, Tag, FileText, Check, AlertCircle } from 'lucide-react';
+import DatePickerModern from '../ui/DatePickerModern';
 
 export default function SumarFondosModal({
   isOpen,
   onClose,
   onAddFunds,
   accounts = [],
+  buckets = [],
   currentSaldoManual = 0,
   currentMontoCasa = 0,
-  currentPresupuestoPrevisto = 3000000
+  currentPresupuestoPrevisto = 3000000,
+  totalGastadoCasa = 0
 }) {
-  const [modo, setModo] = useState('sumar'); // 'sumar' | 'restar'
+  const [modo, setModo] = useState('egreso'); // 'egreso' (Gasto puntual) | 'ingreso' (Sumar/Aporte a la casa)
   const [monto, setMonto] = useState('');
-  const [destino, setDestino] = useState('casa'); // 'casa' | 'personal' | 'ambos'
-  const [porcentajeCasa, setPorcentajeCasa] = useState(60); // Para modo 'ambos'
+  const [descripcion, setDescripcion] = useState('');
+  const [fecha, setFecha] = useState(() => new Date().toISOString().slice(0, 10));
+  const [selectedBucketId, setSelectedBucketId] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (isOpen) {
+      setMonto('');
+      setDescripcion('');
+      setFecha(new Date().toISOString().slice(0, 10));
+      setSelectedBucketId('');
+      setSelectedAccountId('');
+      setError('');
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const montoNum = Number(monto) || 0;
-  
-  let parteCasa = 0;
-  let partePersonal = 0;
+  const esGasto = modo === 'egreso';
 
-  if (destino === 'casa') {
-    parteCasa = montoNum;
-  } else if (destino === 'personal') {
-    partePersonal = montoNum;
-  } else if (destino === 'ambos') {
-    parteCasa = Math.round(montoNum * (porcentajeCasa / 100));
-    partePersonal = montoNum - parteCasa;
-  }
-
-  const esSumar = modo === 'sumar';
-  const cambioCasa = esSumar ? parteCasa : -parteCasa;
-  const cambioPersonal = esSumar ? partePersonal : -partePersonal;
-  const cambioTotal = esSumar ? montoNum : -montoNum;
-
-  const nuevoSaldoTotal = Math.max(0, currentSaldoManual + cambioTotal);
-  const nuevoMontoCasa = Math.max(0, currentMontoCasa + cambioCasa);
-  const nuevoPresupuestoPrevisto = Math.max(0, currentPresupuestoPrevisto + cambioCasa);
-  const currentPersonal = currentSaldoManual - currentMontoCasa;
-  const nuevoMontoPersonal = Math.max(0, currentPersonal + cambioPersonal);
+  // Fondos calculados para preview
+  const fondoCasaDisponibleActual = Math.max(0, currentMontoCasa - totalGastadoCasa);
+  const nuevoFondoCasaDisponible = esGasto
+    ? Math.max(0, fondoCasaDisponibleActual - montoNum)
+    : fondoCasaDisponibleActual + montoNum;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
     if (montoNum <= 0) {
-      setError('Por favor ingresá un monto mayor a 0.');
+      setError('Por favor ingresá un monto mayor a $0.');
+      return;
+    }
+
+    if (!descripcion.trim()) {
+      setError('Por favor indicá una descripción para el registro (ej. "Pizza para la noche", "Vacunas perros", "Aporte mensual sueldo").');
       return;
     }
 
     setLoading(true);
     try {
       await onAddFunds({
-        monto: cambioTotal,
-        aumentoCasa: cambioCasa,
-        aumentoPersonal: cambioPersonal,
         modo,
+        tipo: modo, // 'egreso' | 'ingreso'
+        monto: montoNum,
+        descripcion: descripcion.trim(),
+        fecha,
+        bucketId: selectedBucketId || null,
         accountId: selectedAccountId || null
       });
       onClose();
     } catch (err) {
       console.error(err);
-      setError(err.message || 'Error al actualizar fondos');
+      setError(err.message || 'Error al procesar el movimiento');
     } finally {
       setLoading(false);
     }
@@ -76,177 +82,165 @@ export default function SumarFondosModal({
   return (
     <div style={{
       position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-      backgroundColor: 'rgba(0,0,0,0.8)', zIndex: 1100,
+      backgroundColor: 'rgba(0,0,0,0.82)', zIndex: 1100,
       display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
-      backdropFilter: 'blur(4px)'
+      backdropFilter: 'blur(5px)'
     }}>
       <div style={{
         backgroundColor: 'var(--color-surface)',
-        border: `1px solid ${esSumar ? 'var(--color-gold)' : '#E06C75'}`,
+        border: `1px solid ${esGasto ? '#E06C75' : 'var(--color-gold)'}`,
         borderRadius: '16px',
         padding: '24px',
         maxWidth: '520px',
         width: '100%',
         color: 'var(--color-text)',
-        boxShadow: '0 16px 48px rgba(0,0,0,0.6)'
+        boxShadow: '0 20px 50px rgba(0,0,0,0.7)',
+        maxHeight: '90vh',
+        overflowY: 'auto'
       }}>
         {/* Modos Switch Tabs */}
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', backgroundColor: 'var(--color-surface-2)', padding: '4px', borderRadius: '10px' }}>
           <button
             type="button"
-            onClick={() => setModo('sumar')}
+            onClick={() => { setModo('egreso'); setError(''); }}
             style={{
-              flex: 1, padding: '8px 12px', borderRadius: '8px', border: 'none',
-              backgroundColor: esSumar ? 'var(--color-gold)' : 'transparent',
-              color: esSumar ? '#000' : 'var(--color-text-muted)',
-              fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.9rem'
+              flex: 1, padding: '10px 12px', borderRadius: '8px', border: 'none',
+              backgroundColor: esGasto ? '#E06C75' : 'transparent',
+              color: esGasto ? '#FFF' : 'var(--color-text-muted)',
+              fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.85rem',
+              transition: 'all 0.2s'
             }}
           >
-            <PlusCircle size={18} />
-            <span>+ Sumar / Ingresar</span>
+            <MinusCircle size={18} />
+            <span>- Gasto Puntual Hogar</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setModo('restar')}
+            onClick={() => { setModo('ingreso'); setError(''); }}
             style={{
-              flex: 1, padding: '8px 12px', borderRadius: '8px', border: 'none',
-              backgroundColor: !esSumar ? '#E06C75' : 'transparent',
-              color: !esSumar ? '#FFF' : 'var(--color-text-muted)',
-              fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.9rem'
+              flex: 1, padding: '10px 12px', borderRadius: '8px', border: 'none',
+              backgroundColor: !esGasto ? 'var(--color-gold)' : 'transparent',
+              color: !esGasto ? '#000' : 'var(--color-text-muted)',
+              fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', fontSize: '0.85rem',
+              transition: 'all 0.2s'
             }}
           >
-            <MinusCircle size={18} />
-            <span>- Restar / Ajustar</span>
+            <PlusCircle size={18} />
+            <span>+ Sumar / Aporte a Casa</span>
           </button>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px' }}>
-          <div style={{ padding: '10px', borderRadius: '50%', backgroundColor: esSumar ? 'rgba(201, 168, 76, 0.15)' : 'rgba(224, 108, 117, 0.15)', color: esSumar ? 'var(--color-gold)' : '#E06C75' }}>
-            {esSumar ? <PlusCircle size={24} /> : <MinusCircle size={24} />}
+        {/* Modal Header */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
+          <div style={{ padding: '10px', borderRadius: '12px', backgroundColor: esGasto ? 'rgba(224, 108, 117, 0.15)' : 'rgba(201, 168, 76, 0.15)', color: esGasto ? '#E06C75' : 'var(--color-gold)' }}>
+            {esGasto ? <MinusCircle size={24} /> : <PlusCircle size={24} />}
           </div>
           <div>
-            <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: 700, color: esSumar ? 'var(--color-gold)' : '#E06C75', fontFamily: 'Georgia, serif' }}>
-              {esSumar ? 'Sumar Fondos al Presupuesto' : 'Restar / Ajustar Fondos'}
+            <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: esGasto ? '#E06C75' : 'var(--color-gold)' }}>
+              {esGasto ? 'Registrar Gasto Puntual del Hogar' : 'Sumar Fondos / Aporte a la Casa'}
             </h3>
-            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--color-text-muted)' }}>
-              {esSumar 
-                ? 'Ingresá capital para actualizar tu saldo total, presupuesto de casa y disponible.' 
-                : 'Restá o corregí un error de tipeo/descuento en tu saldo y presupuesto de casa.'}
+            <p style={{ margin: '4px 0 0 0', fontSize: '0.82rem', color: 'var(--color-text-muted)', lineHeight: '1.3' }}>
+              {esGasto
+                ? 'Registrá un gasto puntual de la casa (ej: pizza, vacunas del perro). Quedará guardado en el historial de gastos sin alterar tu presupuesto mensual previsto.'
+                : 'Sumá dinero destinado al hogar (ej: aporte mensual de sueldo). Quedará guardado en el historial y aumentará el fondo disponible.'}
             </p>
           </div>
         </div>
 
         {error && (
-          <div style={{ backgroundColor: 'rgba(231, 76, 60, 0.1)', color: 'var(--color-danger)', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.85rem' }}>
-            {error}
+          <div style={{ backgroundColor: 'rgba(224, 108, 117, 0.12)', color: '#E06C75', border: '1px solid rgba(224, 108, 117, 0.3)', padding: '10px 14px', borderRadius: '8px', marginBottom: '16px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertCircle size={16} />
+            <span>{error}</span>
           </div>
         )}
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {/* Monto Input */}
+          {/* Descripción Field */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '6px', fontWeight: 500 }}>
-              {esSumar ? 'Monto a Ingresar (ARS):' : 'Monto a Restar / Ajustar (ARS):'}
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '6px', fontWeight: 600 }}>
+              <FileText size={15} />
+              <span>Descripción del Movimiento *</span>
             </label>
-            <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: esSumar ? 'var(--color-gold)' : '#E06C75', fontWeight: 700 }}>$</span>
-              <input
-                type="number"
-                step="any"
-                required
-                value={monto}
-                onChange={(e) => setMonto(e.target.value)}
-                placeholder={esSumar ? "Ej. 250000" : "Ej. 50000"}
-                style={{
-                  width: '100%', padding: '12px 12px 12px 28px', borderRadius: '8px',
-                  backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
-                  color: 'var(--color-text)', fontSize: '1.1rem', fontWeight: 600
-                }}
-              />
-            </div>
+            <input
+              type="text"
+              required
+              value={descripcion}
+              onChange={(e) => setDescripcion(e.target.value)}
+              placeholder={esGasto ? "Ej. Pizza para cenar, Vacunas perros, Lavandina" : "Ej. Aporte mensual de sueldo a la casa"}
+              style={{
+                width: '100%', padding: '10px 12px', borderRadius: '8px',
+                backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
+                color: 'var(--color-text)', fontSize: '0.95rem'
+              }}
+            />
           </div>
 
-          {/* Destino / Origen de los fondos */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '8px', fontWeight: 500 }}>
-              {esSumar ? 'Destino del Ingreso:' : 'Origen del Descuento / Ajuste:'}
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-              <button
-                type="button"
-                onClick={() => setDestino('casa')}
-                style={{
-                  padding: '12px 8px', borderRadius: '8px',
-                  border: `2px solid ${destino === 'casa' ? '#61AFEF' : 'var(--color-border)'}`,
-                  backgroundColor: destino === 'casa' ? 'rgba(97, 175, 239, 0.15)' : 'var(--color-surface-2)',
-                  color: destino === 'casa' ? '#61AFEF' : 'var(--color-text-muted)',
-                  fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px'
-                }}
-              >
-                <Home size={18} />
-                <span>100% Casa</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDestino('personal')}
-                style={{
-                  padding: '12px 8px', borderRadius: '8px',
-                  border: `2px solid ${destino === 'personal' ? '#98C379' : 'var(--color-border)'}`,
-                  backgroundColor: destino === 'personal' ? 'rgba(152, 195, 121, 0.15)' : 'var(--color-surface-2)',
-                  color: destino === 'personal' ? '#98C379' : 'var(--color-text-muted)',
-                  fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px'
-                }}
-              >
-                <User size={18} />
-                <span>100% Mío</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setDestino('ambos')}
-                style={{
-                  padding: '12px 8px', borderRadius: '8px',
-                  border: `2px solid ${destino === 'ambos' ? 'var(--color-gold)' : 'var(--color-border)'}`,
-                  backgroundColor: destino === 'ambos' ? 'rgba(201, 168, 76, 0.15)' : 'var(--color-surface-2)',
-                  color: destino === 'ambos' ? 'var(--color-gold)' : 'var(--color-text-muted)',
-                  fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px'
-                }}
-              >
-                <DollarSign size={18} />
-                <span>Repartir %</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Slider de porcentaje si eligió 'ambos' */}
-          {destino === 'ambos' && (
-            <div style={{ backgroundColor: 'var(--color-surface-2)', padding: '12px', borderRadius: '8px', border: '1px solid var(--color-border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '6px' }}>
-                <span style={{ color: '#61AFEF' }}>Casa: {porcentajeCasa}% ({formatARS(parteCasa)})</span>
-                <span style={{ color: '#98C379' }}>Mío: {100 - porcentajeCasa}% ({formatARS(partePersonal)})</span>
+          {/* Monto & Fecha */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '6px', fontWeight: 600 }}>
+                Monto (ARS) *
+              </label>
+              <div style={{ position: 'relative' }}>
+                <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: esGasto ? '#E06C75' : 'var(--color-gold)', fontWeight: 700 }}>$</span>
+                <input
+                  type="number"
+                  step="any"
+                  min="1"
+                  required
+                  value={monto}
+                  onChange={(e) => setMonto(e.target.value)}
+                  placeholder="0.00"
+                  style={{
+                    width: '100%', padding: '10px 12px 10px 28px', borderRadius: '8px',
+                    backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
+                    color: 'var(--color-text)', fontSize: '1.05rem', fontWeight: 700
+                  }}
+                />
               </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="5"
-                value={porcentajeCasa}
-                onChange={(e) => setPorcentajeCasa(Number(e.target.value))}
-                style={{ width: '100%', accentColor: esSumar ? 'var(--color-gold)' : '#E06C75', cursor: 'pointer' }}
+            </div>
+
+            <div>
+              <DatePickerModern
+                label="Fecha"
+                value={fecha}
+                onChange={(val) => setFecha(val || new Date().toISOString().slice(0, 10))}
+                align="right"
               />
             </div>
-          )}
+          </div>
 
-          {/* Selector opcional de cuenta bancaria */}
+          {/* Sobre del Hogar */}
+          <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '6px', fontWeight: 600 }}>
+              <Tag size={15} />
+              <span>Sobre del Hogar (Opcional)</span>
+            </label>
+            <select
+              value={selectedBucketId}
+              onChange={(e) => setSelectedBucketId(e.target.value)}
+              style={{
+                width: '100%', padding: '10px', borderRadius: '8px',
+                backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
+                color: 'var(--color-text)', fontSize: '0.9rem'
+              }}
+            >
+              <option value="">— General Hogar / Sin sobre específico —</option>
+              {buckets.map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.nombre} ({formatARS(b.monto_presupuestado)}/mes)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Cuenta Bancaria */}
           {accounts.length > 0 && (
             <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '6px', fontWeight: 500 }}>
-                Asociar a Cuenta Bancaria / Billetera (Opcional):
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', color: 'var(--color-text-muted)', marginBottom: '6px', fontWeight: 600 }}>
+                <Wallet size={15} />
+                <span>Asociar a Cuenta Bancaria / Billetera (Opcional)</span>
               </label>
               <select
                 value={selectedAccountId}
@@ -257,7 +251,7 @@ export default function SumarFondosModal({
                   color: 'var(--color-text)', fontSize: '0.9rem'
                 }}
               >
-                <option value="">— Ninguna (Solo ajuste virtual) —</option>
+                <option value="">— Ninguna (Solo ajuste de caja virtual) —</option>
                 {accounts.map(acc => (
                   <option key={acc.id} value={acc.id}>
                     {acc.nombre} ({acc.moneda} {formatARS(acc.saldo_inicial || 0)})
@@ -267,52 +261,33 @@ export default function SumarFondosModal({
             </div>
           )}
 
-          {/* Previsualización en Vivo */}
+          {/* Live Preview Box */}
           <div style={{
-            backgroundColor: esSumar ? 'rgba(201, 168, 76, 0.06)' : 'rgba(224, 108, 117, 0.06)',
-            border: `1px solid ${esSumar ? 'rgba(201, 168, 76, 0.3)' : 'rgba(224, 108, 117, 0.3)'}`,
+            backgroundColor: esGasto ? 'rgba(224, 108, 117, 0.08)' : 'rgba(201, 168, 76, 0.08)',
+            border: `1px solid ${esGasto ? 'rgba(224, 108, 117, 0.3)' : 'rgba(201, 168, 76, 0.3)'}`,
             borderRadius: '12px',
-            padding: '14px',
-            fontSize: '0.85rem',
+            padding: '12px 16px',
+            fontSize: '0.82rem',
             display: 'flex',
             flexDirection: 'column',
             gap: '6px'
           }}>
-            <div style={{ fontWeight: 700, color: esSumar ? 'var(--color-gold)' : '#E06C75', marginBottom: '4px', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '1px' }}>
-              ✦ IMPACTO DIRECTO TRAS {esSumar ? 'SUMAR FONDOS' : 'RESTAR / AJUSTAR'}:
+            <div style={{ fontWeight: 700, color: esGasto ? '#E06C75' : 'var(--color-gold)', textTransform: 'uppercase', fontSize: '0.75rem', letterSpacing: '0.5px' }}>
+              ✦ Resumen del Impacto:
             </div>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'var(--color-text-muted)' }}>Saldo Total en Cuenta:</span>
-              <span style={{ fontWeight: 700, color: '#FFF' }}>
-                {formatARS(currentSaldoManual)} <ArrowRight size={12} style={{ margin: '0 4px' }} /> {formatARS(nuevoSaldoTotal)}
-              </span>
+            <div style={{ color: 'var(--color-text)' }}>
+              • Registro formal: <strong>"{descripcion || 'Sin descripción'}"</strong> por <strong>{formatARS(montoNum)}</strong>
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: 'var(--color-gold)' }}>Presupuesto Previsto:</span>
-              <span style={{ fontWeight: 700, color: 'var(--color-gold)' }}>
-                {formatARS(currentPresupuestoPrevisto)} <ArrowRight size={12} style={{ margin: '0 4px' }} /> {formatARS(nuevoPresupuestoPrevisto)} ({esSumar ? '+' : ''}{formatARS(cambioCasa)})
-              </span>
+            <div style={{ color: 'var(--color-text)' }}>
+              • Fondo Disponible de Casa: <strong>{formatARS(fondoCasaDisponibleActual)}</strong> → <strong style={{ color: esGasto ? '#E06C75' : '#98C379' }}>{formatARS(nuevoFondoCasaDisponible)}</strong>
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: '#61AFEF' }}>Fondo Casa Asignado:</span>
-              <span style={{ fontWeight: 700, color: '#61AFEF' }}>
-                {formatARS(currentMontoCasa)} <ArrowRight size={12} style={{ margin: '0 4px' }} /> {formatARS(nuevoMontoCasa)} ({esSumar ? '+' : ''}{formatARS(cambioCasa)})
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ color: '#98C379' }}>Dinero Mío Personal:</span>
-              <span style={{ fontWeight: 700, color: '#98C379' }}>
-                {formatARS(currentPersonal)} <ArrowRight size={12} style={{ margin: '0 4px' }} /> {formatARS(nuevoMontoPersonal)} ({destino === 'casa' ? '$0 - Intacto 🛡️' : `${esSumar ? '+' : ''}${formatARS(cambioPersonal)}`})
-              </span>
+            <div style={{ color: 'var(--color-text-muted)', fontSize: '0.78rem', fontStyle: 'italic' }}>
+              🛡️ Presupuesto mensual previsto: Intacto ({formatARS(currentPresupuestoPrevisto)})
             </div>
           </div>
 
-          {/* Botones de Acción */}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
+          {/* Buttons */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '8px' }}>
             <button
               type="button"
               onClick={onClose}
@@ -326,17 +301,22 @@ export default function SumarFondosModal({
 
             <button
               type="submit"
-              disabled={loading || montoNum <= 0}
+              disabled={loading || montoNum <= 0 || !descripcion.trim()}
               style={{
                 padding: '10px 22px', borderRadius: '8px', border: 'none',
-                backgroundColor: esSumar ? 'var(--color-gold)' : '#E06C75',
-                color: esSumar ? '#000' : '#FFF', fontWeight: 700,
-                cursor: loading || montoNum <= 0 ? 'not-allowed' : 'pointer',
-                opacity: loading || montoNum <= 0 ? 0.6 : 1,
-                display: 'flex', alignItems: 'center', gap: '8px'
+                backgroundColor: esGasto ? '#E06C75' : 'var(--color-gold)',
+                color: esGasto ? '#FFF' : '#000', fontWeight: 700,
+                cursor: loading || montoNum <= 0 || !descripcion.trim() ? 'not-allowed' : 'pointer',
+                opacity: loading || montoNum <= 0 || !descripcion.trim() ? 0.6 : 1,
+                display: 'flex', alignItems: 'center', gap: '6px'
               }}
             >
-              {loading ? 'Guardando...' : (esSumar ? 'Confirmar e Ingresar Fondos' : 'Confirmar y Restar Fondos')}
+              {loading ? 'Guardando...' : (
+                <>
+                  <Check size={16} />
+                  <span>{esGasto ? 'Guardar Gasto Puntual' : 'Confirmar Ingreso a Casa'}</span>
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -344,4 +324,3 @@ export default function SumarFondosModal({
     </div>
   );
 }
-
