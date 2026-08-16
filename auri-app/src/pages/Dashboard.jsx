@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import useDolarRate from '../hooks/useDolarBlue';
 import { useCountUp } from '../hooks/useCountUp';
 import { formatARS, formatUSD } from '../utils/currency';
+import { isHouseTransaction } from '../utils/householdHelper';
 import Skeleton from '../components/ui/Skeleton';
 import RecurrentesWidget from '../components/recurrentes/RecurrentesWidget';
 import GastosPorCategoria from '../components/dashboard/GastosPorCategoria';
@@ -60,18 +61,7 @@ export default function Dashboard() {
   const [anioActual, setAnioActual] = useState(hoy.getFullYear());
   const [primerTxFecha, setPrimerTxFecha] = useState(null);
 
-  // SWR para resúmenes mensuales via RPC
-  const { data: summary, isLoading: loadingSummary, mutate: mutateSummary } = useSWR(
-    user ? ['dashboard-summary', user.id, anioActual, mesActual + 1] : null,
-    async ([, userId, year, month]) => {
-      const { data, error } = await supabase.rpc('get_monthly_summary', { p_user_id: userId, p_year: year, p_month: month });
-      if (error) throw error;
-      return data;
-    },
-    { revalidateOnFocus: false, dedupingInterval: 60000 }
-  );
-
-  // SWR para las últimas transacciones (vía table query)
+  // SWR para las transacciones (vía table query)
   const { data: allTransactions, isLoading: loadingTransactions } = useSWR(
     user ? ['dashboard-transactions', user.id, anioActual, mesActual] : null,
     async ([, userId, year, month]) => {
@@ -99,6 +89,38 @@ export default function Dashboard() {
     },
     { revalidateOnFocus: false, dedupingInterval: 60000 }
   );
+
+  // Filtrar exclusivamente transacciones PERSONALES (excluye las del hogar / casa)
+  const personalTransactions = useMemo(() => {
+    if (!allTransactions) return [];
+    return allTransactions.filter(tx => !isHouseTransaction(tx, user?.id));
+  }, [allTransactions, user?.id]);
+
+  // Transacciones personales del mes seleccionado
+  const monthPrefix = `${anioActual}-${String(mesActual + 1).padStart(2, '0')}`;
+  const currentMonthPersonalTxs = useMemo(() => {
+    return personalTransactions.filter(tx => tx.fecha && String(tx.fecha).startsWith(monthPrefix));
+  }, [personalTransactions, monthPrefix]);
+
+  const personalIngresos = useMemo(() => {
+    return currentMonthPersonalTxs
+      .filter(tx => tx.tipo === 'ingreso')
+      .reduce((sum, tx) => sum + Number(tx.monto_ars || tx.monto || 0), 0);
+  }, [currentMonthPersonalTxs]);
+
+  const personalEgresos = useMemo(() => {
+    return currentMonthPersonalTxs
+      .filter(tx => tx.tipo === 'egreso')
+      .reduce((sum, tx) => sum + Number(tx.monto_ars || tx.monto || 0), 0);
+  }, [currentMonthPersonalTxs]);
+
+  const countPersonalIngresos = useMemo(() => {
+    return currentMonthPersonalTxs.filter(tx => tx.tipo === 'ingreso').length;
+  }, [currentMonthPersonalTxs]);
+
+  const countPersonalEgresos = useMemo(() => {
+    return currentMonthPersonalTxs.filter(tx => tx.tipo === 'egreso').length;
+  }, [currentMonthPersonalTxs]);
 
   // Cálculo de Saldo Total (basado en cuentas + todas las transacciones hasta la fecha)
   const [saldoTotal, setSaldoTotal] = useState({ ars: 0, usd: 0 });
@@ -146,7 +168,7 @@ export default function Dashboard() {
           setPrimerTxFecha(px?.[0] ? new Date(px[0].fecha + 'T12:00:00') : new Date(hoy.getFullYear(), hoy.getMonth(), 1));
         }
         
-        // Recurrentes (SWR could be used here too but a simple fetch is fine for now)
+        // Recurrentes personales
         const { data: recs } = await supabase.from('recurring_expenses').select('*').eq('user_id', user.id);
         setRecurrentes(recs || []);
       }
@@ -155,11 +177,11 @@ export default function Dashboard() {
   }, [user, anioActual, mesActual, dolarVenta]);
 
   useEffect(() => {
-    if (allTransactions) {
+    if (personalTransactions) {
       const endOfMonth = new Date(anioActual, mesActual + 1, 0).toISOString().slice(0, 10);
-      setLastTxns(allTransactions.filter(t => t.fecha <= endOfMonth).slice(0, 5));
+      setLastTxns(personalTransactions.filter(t => t.fecha <= endOfMonth).slice(0, 5));
     }
-  }, [allTransactions, mesActual, anioActual]);
+  }, [personalTransactions, mesActual, anioActual]);
 
   const changeMonth = (delta) => {
     let m = mesActual + delta; let y = anioActual;
@@ -185,7 +207,7 @@ export default function Dashboard() {
           <h1 style={{ fontWeight: 600, fontSize: '1.75rem', marginBottom: '8px' }}>
             {greeting}, {profile?.nombre?.split(' ')[0] || 'Usuario'}
           </h1>
-          <p style={{ color: 'var(--color-text-muted)' }}>Acá tenés un resumen de tus finanzas.</p>
+          <p style={{ color: 'var(--color-text-muted)' }}>Acá tenés un resumen de tus finanzas personales.</p>
         </div>
         
         <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--color-surface-2)', borderRadius: '12px', padding: '4px', border: '1px solid var(--color-border)' }}>
@@ -195,7 +217,7 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {!hasData && !loadingSummary ? (
+      {!hasData && !loadingTransactions ? (
         <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '64px 24px', backgroundColor: 'var(--color-surface-2)', borderStyle: 'dashed', textAlign: 'center' }}>
           <div style={{ width: '64px', height: '64px', borderRadius: '50%', backgroundColor: 'var(--color-surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', color: 'var(--color-gold)' }}>
             <LayoutDashboard size={32} />
@@ -211,23 +233,24 @@ export default function Dashboard() {
         </div>
       ) : (
         <>
-          {/* Summary Cards */}
+          {/* Summary Cards Personales */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px' }}>
-            <DashboardCard title="💎 Patrimonio Neto" value={saldoTotal.ars + (inversionesTotalUSD * (dolarVenta || 1))} sub={formatUSD(saldoTotal.usd + inversionesTotalUSD)} color="var(--color-gold)" loading={loadingSummary} />
-            <DashboardCard title="🏦 Saldo Cuentas" value={saldoTotal.ars} sub={formatUSD(saldoTotal.usd)} color="var(--color-text-muted)" loading={loadingSummary} />
-            <DashboardCard title="📈 Ingresos del Mes" value={summary?.ingresos} sub2={`${summary?.count_ingresos || 0} transacciones`} color="var(--color-success)" loading={loadingSummary} />
-            <DashboardCard title="📉 Egresos del Mes" value={summary?.egresos} sub2={`${summary?.count_egresos || 0} txs ${summary?.automaticos > 0 ? `· ${formatARS(summary.automaticos)} auto` : ''}`} color="var(--color-danger)" loading={loadingSummary} />
+            <DashboardCard title="💎 Patrimonio Neto" value={saldoTotal.ars + (inversionesTotalUSD * (dolarVenta || 1))} sub={formatUSD(saldoTotal.usd + inversionesTotalUSD)} color="var(--color-gold)" loading={loadingTransactions} />
+            <DashboardCard title="🏦 Saldo Cuentas" value={saldoTotal.ars} sub={formatUSD(saldoTotal.usd)} color="var(--color-text-muted)" loading={loadingTransactions} />
+            <DashboardCard title="📈 Ingresos Personales" value={personalIngresos} sub2={`${countPersonalIngresos} transacciones`} color="var(--color-success)" loading={loadingTransactions} />
+            <DashboardCard title="📉 Egresos Personales" value={personalEgresos} sub2={`${countPersonalEgresos} transacciones personales`} color="var(--color-danger)" loading={loadingTransactions} />
           </div>
 
+          {/* Gráficos de Categorías y Comparativa Mensual Exclusivamente Personales */}
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(300px, 1fr) minmax(300px, 1.25fr)', gap: '24px' }}>
-            <GastosPorCategoria transacciones={allTransactions || []} loading={loadingTransactions} />
-            <ComparativaMensual transacciones={allTransactions || []} mesSeleccionado={mesActual} anioSeleccionado={anioActual} />
+            <GastosPorCategoria transacciones={personalTransactions} loading={loadingTransactions} />
+            <ComparativaMensual transacciones={personalTransactions} mesSeleccionado={mesActual} anioSeleccionado={anioActual} />
           </div>
 
           <ProyeccionSaldo 
-            transacciones={allTransactions || []} 
+            transacciones={personalTransactions} 
             recurrentes={recurrentes}
-            saldoInicialMes={saldoTotal.ars - (summary?.ingresos || 0) + (summary?.egresos || 0)}
+            saldoInicialMes={saldoTotal.ars - personalIngresos + personalEgresos}
             mesSeleccionado={mesActual}
             anioSeleccionado={anioActual}
           />
@@ -239,7 +262,7 @@ export default function Dashboard() {
 
             <div className="card" style={{ padding: '24px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                <h2 style={{ fontWeight: 600, fontSize: '1rem' }}>🕐 Últimos Movimientos</h2>
+                <h2 style={{ fontWeight: 600, fontSize: '1rem' }}>🕐 Últimos Movimientos Personales</h2>
                 <button className="btn-icon" onClick={() => navigate('/transacciones')}><ArrowRight size={18} /></button>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -258,7 +281,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                 ))}
-                {lastTxns.length === 0 && <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>No hay movimientos recientes.</p>}
+                {lastTxns.length === 0 && <p style={{ textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.85rem' }}>No hay movimientos personales recientes.</p>}
               </div>
             </div>
           </div>

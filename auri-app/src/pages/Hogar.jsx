@@ -21,6 +21,7 @@ import {
   getServicePaymentsMonth, toggleServicePayment,
   getAutomaticExpenses, saveAutomaticExpense, deleteAutomaticExpense
 } from '../services/householdService';
+import { isHouseTransaction } from '../utils/householdHelper';
 import { 
   Home, Sparkles, RefreshCw, Plus, Edit2, Trash2, ShieldCheck, 
   BarChart3, Printer, Calendar, ListFilter, TrendingUp, Info 
@@ -162,37 +163,25 @@ export default function Hogar() {
   }, [autoExpenses]);
 
   // Helper para determinar si una transacción es de Casa
-  const isHouseTransaction = useCallback((tx) => {
-    if (!tx) return false;
-    if (tx.es_gasto_casa) return true;
-    if (tx.household_bucket_id) return true;
-
-    const localMappingKey = `auri_local_tx_household_mapping_${user?.id}`;
-    const localMapping = JSON.parse(localStorage.getItem(localMappingKey) || '{}');
-
-    if (localMapping[tx.id]?.es_gasto_casa) return true;
-    if (localMapping[tx.id]?.household_bucket_id) return true;
-
-    const cleanDesc = tx.descripcion ? tx.descripcion.trim() : '';
-    if (cleanDesc && localMapping['desc_' + cleanDesc]?.es_gasto_casa) return true;
-
-    // Patrones comunes si es un gasto manual del hogar
-    if (cleanDesc) {
-      const d = cleanDesc.toLowerCase();
-      if (
-        d.includes('gasto casa') || 
-        d.includes('presupuesto casa') || 
-        d.includes('compra pollo') || 
-        d.includes('nafta auto') ||
-        d.includes('débito automático') ||
-        d.includes('pizza') ||
-        d.includes('vacunas')
-      ) {
-        return true;
-      }
-    }
-    return false;
+  const isHouseTx = useCallback((tx) => {
+    return isHouseTransaction(tx, user?.id);
   }, [user?.id]);
+
+  // Total Ingresos del Mes asignados a Casa
+  const totalIngresosCasa = useMemo(() => {
+    if (!monthTransactions) return 0;
+    return monthTransactions
+      .filter(tx => tx.tipo === 'ingreso' && isHouseTx(tx))
+      .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
+  }, [monthTransactions, isHouseTx]);
+
+  // Total Ingresos del Mes Personales (Comisiones propias, etc.)
+  const totalIngresosPersonal = useMemo(() => {
+    if (!monthTransactions) return 0;
+    return monthTransactions
+      .filter(tx => tx.tipo === 'ingreso' && !isHouseTx(tx))
+      .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
+  }, [monthTransactions, isHouseTx]);
 
   // Gasto Mensual Real Total de la Casa
   const totalGastadoCasa = useMemo(() => {
@@ -202,7 +191,7 @@ export default function Hogar() {
     let manualSum = 0;
     if (monthTransactions) {
       monthTransactions.forEach(tx => {
-        if (tx.tipo === 'egreso' && isHouseTransaction(tx)) {
+        if (tx.tipo === 'egreso' && isHouseTx(tx)) {
           manualSum += Number(tx.monto || 0);
         }
       });
@@ -230,16 +219,16 @@ export default function Hogar() {
     });
 
     return manualSum + autoSum + serviceSum;
-  }, [monthTransactions, autoExpenses, services, paidServices, user, isHouseTransaction]);
+  }, [monthTransactions, autoExpenses, services, paidServices, user, isHouseTx]);
 
   // Gasto Mensual Real Personal (Excluye rigurosamente las de casa)
   const totalGastadoPersonal = useMemo(() => {
     if (!monthTransactions) return 0;
 
     return monthTransactions
-      .filter(tx => tx.tipo === 'egreso' && !isHouseTransaction(tx))
+      .filter(tx => tx.tipo === 'egreso' && !isHouseTx(tx))
       .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
-  }, [monthTransactions, isHouseTransaction]);
+  }, [monthTransactions, isHouseTx]);
 
   // Desglose por sobre del hogar
   const spendingPerBucket = useMemo(() => {
@@ -451,74 +440,100 @@ export default function Hogar() {
     toast.success('Valores manuales actualizados');
   };
 
-  const handleAddFunds = async ({ modo, tipo, monto, descripcion, fecha, bucketId, accountId }) => {
-    const absMonto = Math.abs(Number(monto));
-    if (!absMonto || absMonto <= 0) return;
+  const handleAddFunds = async (params) => {
+    const {
+      modo, // 'reparto_comision' | 'ingreso_casa' | 'ingreso_personal' | 'egreso_casa'
+      tipo, // 'ingreso' | 'egreso'
+      monto,
+      montoCasa,
+      montoPersonal,
+      descripcion,
+      fecha,
+      bucketId,
+      accountId
+    } = params;
 
-    const effectiveTipo = tipo || (modo === 'ingreso' ? 'ingreso' : 'egreso');
     const txDate = fecha || new Date().toISOString().slice(0, 10);
-    const txDesc = descripcion?.trim() || (effectiveTipo === 'ingreso' ? 'Aporte de Fondos al Hogar' : 'Gasto Puntual del Hogar');
+    const txsToInsert = [];
 
-    const currentSaldo = settings?.saldo_manual !== undefined ? settings.saldo_manual : 11400000;
-    const currentMontoCasa = settings?.monto_destinado_casa !== undefined ? settings.monto_destinado_casa : 2000000;
+    if (modo === 'reparto_comision') {
+      const numCasa = Number(montoCasa) || 0;
+      const numPersonal = Number(montoPersonal) || 0;
 
-    if (effectiveTipo === 'ingreso') {
-      // Sumar dinero / Aporte a la casa: incrementa el fondo destinado a la casa y el saldo manual en cuenta
-      const newMontoCasa = currentMontoCasa + absMonto;
-      const newSaldoManual = currentSaldo + absMonto;
+      if (numCasa > 0) {
+        txsToInsert.push({
+          id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'tx-' + Date.now() + '-casa',
+          user_id: user.id,
+          account_id: accountId || null,
+          tipo: 'ingreso',
+          monto: numCasa,
+          moneda: 'ARS',
+          descripcion: `${descripcion || 'Comisión'} (Aporte Casa)`,
+          fecha: txDate,
+          es_gasto_casa: true,
+          household_bucket_id: bucketId || null
+        });
+      }
 
-      const newSettings = {
-        ...settings,
-        regla_tipo: 'manual',
-        saldo_manual: newSaldoManual,
-        monto_destinado_casa: newMontoCasa
-        // NOTA: presupuesto_previsto_manual NO se altera para no distorsionar la meta mensual fijada
-      };
+      if (numPersonal > 0) {
+        txsToInsert.push({
+          id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'tx-' + Date.now() + '-pers',
+          user_id: user.id,
+          account_id: accountId || null,
+          tipo: 'ingreso',
+          monto: numPersonal,
+          moneda: 'ARS',
+          descripcion: `${descripcion || 'Comisión'} (Dinero Personal)`,
+          fecha: txDate,
+          es_gasto_casa: false,
+          household_bucket_id: null
+        });
+      }
+    } else {
+      const absMonto = Math.abs(Number(monto));
+      if (!absMonto || absMonto <= 0) return;
 
-      const updated = await saveHouseholdSettings(user.id, newSettings);
-      setSettings(updated);
+      const isCasa = modo === 'egreso_casa' || modo === 'ingreso_casa' || !!params.esCasa;
+      const effectiveTipo = tipo || (modo === 'egreso_casa' ? 'egreso' : 'ingreso');
+
+      txsToInsert.push({
+        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'tx-' + Date.now(),
+        user_id: user.id,
+        account_id: accountId || null,
+        tipo: effectiveTipo,
+        monto: absMonto,
+        moneda: 'ARS',
+        descripcion: descripcion?.trim() || (effectiveTipo === 'ingreso' ? (isCasa ? 'Aporte a Casa' : 'Ingreso Personal') : 'Gasto Hogar'),
+        fecha: txDate,
+        es_gasto_casa: isCasa,
+        household_bucket_id: isCasa ? (bucketId || null) : null
+      });
     }
-    // Para egreso (gasto puntual como pizza, vacunas del perro, etc.):
-    // El presupuesto_previsto_manual y monto_destinado_casa permanecen intactos.
-    // Al registrar la transacción en `transactions` con es_gasto_casa: true, 
-    // totalGastadoCasa se recalcula automáticamente y descuenta el saldo disponible de casa en tiempo real.
 
-    // 1. Guardar la transacción formal en Supabase y/o LocalStorage
-    const txId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'tx-' + Date.now();
-    const txPayload = {
-      id: txId,
-      user_id: user.id,
-      account_id: accountId || null,
-      tipo: effectiveTipo,
-      monto: absMonto,
-      moneda: 'ARS',
-      descripcion: txDesc,
-      fecha: txDate,
-      es_gasto_casa: true,
-      household_bucket_id: bucketId || null
-    };
-
-    // Guardar el mapeo local por seguridad
+    // Insertar en Supabase y guardar mapeos locales
     const localMappingKey = `auri_local_tx_household_mapping_${user.id}`;
     const currentMapping = JSON.parse(localStorage.getItem(localMappingKey) || '{}');
-    currentMapping[txId] = { 
-      es_gasto_casa: true, 
-      household_bucket_id: bucketId || null 
-    };
-    if (txDesc) {
-      currentMapping['desc_' + txDesc.trim()] = {
-        es_gasto_casa: true,
-        household_bucket_id: bucketId || null
+
+    for (const tx of txsToInsert) {
+      currentMapping[tx.id] = {
+        es_gasto_casa: !!tx.es_gasto_casa,
+        household_bucket_id: tx.household_bucket_id || null
       };
+      if (tx.descripcion) {
+        currentMapping['desc_' + tx.descripcion.trim()] = {
+          es_gasto_casa: !!tx.es_gasto_casa,
+          household_bucket_id: tx.household_bucket_id || null
+        };
+      }
     }
     localStorage.setItem(localMappingKey, JSON.stringify(currentMapping));
 
     try {
-      const { error } = await supabase.from('transactions').insert([txPayload]);
+      const { error } = await supabase.from('transactions').insert(txsToInsert);
       if (error) {
         if (error.message?.includes('es_gasto_casa') || error.message?.includes('column') || error.code === 'PGRST204' || error.message?.includes('schema cache')) {
-          const { es_gasto_casa, household_bucket_id, ...fallbackPayload } = txPayload;
-          await supabase.from('transactions').insert([fallbackPayload]);
+          const fallbackPayload = txsToInsert.map(({ es_gasto_casa, household_bucket_id, ...rest }) => rest);
+          await supabase.from('transactions').insert(fallbackPayload);
         } else {
           console.error('Error insertando en Supabase transactions:', error);
         }
@@ -527,15 +542,15 @@ export default function Hogar() {
       console.error('Error en Supabase insert:', err);
     }
 
-    // 2. Si asoció cuenta bancaria real, actualizar su saldo
+    // Actualizar saldo de cuenta bancaria si aplica
     if (accountId) {
       try {
         const targetAcc = accounts.find(a => a.id === accountId);
         if (targetAcc) {
+          const totalDelta = txsToInsert.reduce((acc, tx) => tx.tipo === 'ingreso' ? acc + tx.monto : acc - tx.monto, 0);
           const actualSaldo = Number(targetAcc.saldo_inicial || 0);
-          const nuevoSaldo = effectiveTipo === 'ingreso' ? actualSaldo + absMonto : actualSaldo - absMonto;
           await supabase.from('accounts').update({
-            saldo_inicial: Math.max(0, nuevoSaldo)
+            saldo_inicial: Math.max(0, actualSaldo + totalDelta)
           }).eq('id', accountId);
         }
       } catch (accErr) {
@@ -543,14 +558,23 @@ export default function Hogar() {
       }
     }
 
-    if (effectiveTipo === 'ingreso') {
-      toast.success(`¡Ingreso registrado: "${txDesc}" por ${formatARS(absMonto)}!`);
-    } else {
-      toast.success(`¡Gasto de casa registrado: "${txDesc}" por ${formatARS(absMonto)}!`);
-    }
-
+    toast.success('Movimiento registrado correctamente');
     mutateTx();
     loadData(true);
+  };
+
+  const handleApplyDistribution = async ({ ingreso, montoParaCasa, montoParaPersonal, descripcion }) => {
+    await handleAddFunds({
+      modo: 'reparto_comision',
+      tipo: 'ingreso',
+      monto: ingreso,
+      montoCasa: montoParaCasa,
+      montoPersonal: montoParaPersonal,
+      descripcion: descripcion || 'Reparto de Ingreso Mensual',
+      fecha: new Date().toISOString().slice(0, 10),
+      bucketId: null,
+      accountId: null
+    });
   };
 
   const handleSaveBucket = async (bucketData) => {
@@ -846,10 +870,14 @@ export default function Hogar() {
             totalGastadoCasa={totalGastadoCasa}
             totalDebitoAutomaticoActivo={totalDebitoAutomaticoActivo}
             totalGastadoPersonal={totalGastadoPersonal}
-            monthTransactions={monthTransactions}
+            totalIngresosCasa={totalIngresosCasa}
+            totalIngresosPersonal={totalIngresosPersonal}
+            monthTransactions={monthTransactions || []}
             buckets={buckets}
             spendingPerBucket={spendingPerBucket}
             autoExpenses={autoExpenses}
+            services={services}
+            paidServices={paidServices}
           />
 
           {/* Sobres de Gastos del Hogar */}
@@ -1358,7 +1386,7 @@ export default function Hogar() {
         onClose={() => setIsCalculatorOpen(false)}
         settings={settings}
         buckets={buckets}
-        onApplyDistribution={handleUpdateSettings}
+        onApplyDistribution={handleApplyDistribution}
       />
 
       {isTxModalOpen && (

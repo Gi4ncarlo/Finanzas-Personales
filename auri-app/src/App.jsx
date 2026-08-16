@@ -31,6 +31,7 @@ const MetaDetalle = lazy(() => import('./pages/MetaDetalle'));
 const Alertas = lazy(() => import('./pages/Alertas'));
 const Notificaciones = lazy(() => import('./pages/Notificaciones'));
 const Hogar = lazy(() => import('./pages/Hogar'));
+const NotFound = lazy(() => import('./pages/NotFound'));
 
 const PageLoader = () => (
   <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -85,8 +86,8 @@ function App() {
                     <Route path="/notificaciones" element={<Notificaciones />} />
                   </Route>
                   
-                  {/* Catch all */}
-                  <Route path="*" element={<Navigate to="/login" replace />} />
+                  {/* Catch all 404 */}
+                  <Route path="*" element={<NotFound />} />
                 </Routes>
               </Suspense>
             </Router>
