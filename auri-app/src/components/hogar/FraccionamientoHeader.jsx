@@ -15,6 +15,7 @@ export default function FraccionamientoHeader({
   accounts = [],
   totalPresupuestadoCasa = 0,
   totalGastadoCasa = 0,
+  totalGastadoCasaPresupuesto = 0,
   totalDebitoAutomaticoActivo = 0,
   totalGastadoPersonal = 0,
   totalIngresosCasa = 0,
@@ -58,7 +59,7 @@ export default function FraccionamientoHeader({
   const fondoPersonalDisponible = Math.max(0, dineroPersonalInicial + (totalIngresosPersonal || 0) - totalGastadoPersonal);
 
   // El presupuesto previsto mensual evalúa exclusivamente el gasto de la casa
-  const totalConsumidoPresupuesto = totalGastadoCasa;
+  const totalConsumidoPresupuesto = totalGastadoCasaPresupuesto || totalGastadoCasa;
   const porcentajePresupuestoConsumido = presupuestoPrevisto > 0 
     ? (totalConsumidoPresupuesto / presupuestoPrevisto) * 100 
     : 0;

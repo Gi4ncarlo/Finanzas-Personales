@@ -223,26 +223,26 @@ export default function Hogar() {
     return txSum + ajuste;
   }, [monthTransactions, isHouseTx, settings]);
 
-  // Gasto Mensual Real Total de la Casa
-  const totalGastadoCasa = useMemo(() => {
+  // 1. Gasto Mensual Real de la Casa que ya impactó en la cuenta bancaria (Transacciones reales)
+  const totalGastadoCasaReal = useMemo(() => {
+    if (!monthTransactions) return 0;
+    return monthTransactions
+      .filter(tx => tx.tipo === 'egreso' && isHouseTx(tx))
+      .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
+  }, [monthTransactions, isHouseTx]);
+
+  // 2. Gasto Mensual Total de la Casa para Presupuesto (Real + Débitos + Servicios checklist)
+  const totalGastadoCasaPresupuesto = useMemo(() => {
     if (!user) return 0;
 
-    // 1. Transacciones manuales clasificadas como de casa (Egresos)
-    let manualSum = 0;
-    if (monthTransactions) {
-      monthTransactions.forEach(tx => {
-        if (tx.tipo === 'egreso' && isHouseTx(tx)) {
-          manualSum += Number(tx.monto || 0);
-        }
-      });
-    }
+    let manualSum = totalGastadoCasaReal;
 
-    // 2. Débitos automáticos activos
+    // Débitos automáticos activos
     const autoSum = autoExpenses
       .filter(ae => ae.activo)
       .reduce((sum, ae) => sum + Number(ae.monto || 0), 0);
 
-    // 3. Servicios marcados como pagados que no tienen transacción real registrada
+    // Servicios marcados como pagados que no tienen transacción real registrada
     let serviceSum = 0;
     services.forEach(s => {
       const isPaid = !!paidServices[s.id];
@@ -259,7 +259,9 @@ export default function Hogar() {
     });
 
     return manualSum + autoSum + serviceSum;
-  }, [monthTransactions, autoExpenses, services, paidServices, user, isHouseTx]);
+  }, [monthTransactions, autoExpenses, services, paidServices, user, totalGastadoCasaReal]);
+
+  const totalGastadoCasa = totalGastadoCasaPresupuesto;
 
   // Gasto Mensual Real Personal (Excluye rigurosamente las de casa)
   const totalGastadoPersonal = useMemo(() => {
@@ -980,7 +982,8 @@ export default function Hogar() {
             accounts={accounts}
             onOpenCalculator={() => setIsCalculatorOpen(true)}
             totalPresupuestadoCasa={totalPresupuestadoCasa}
-            totalGastadoCasa={totalGastadoCasa}
+            totalGastadoCasa={totalGastadoCasaReal}
+            totalGastadoCasaPresupuesto={totalGastadoCasaPresupuesto}
             totalDebitoAutomaticoActivo={totalDebitoAutomaticoActivo}
             totalGastadoPersonal={totalGastadoPersonal}
             totalIngresosCasa={totalIngresosCasa}
