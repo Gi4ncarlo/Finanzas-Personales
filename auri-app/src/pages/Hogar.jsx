@@ -329,6 +329,10 @@ export default function Hogar() {
   const saldoBaseCasa = Number(settings?.monto_destinado_casa || 5202000);
   const saldoBaseCuenta = Number((saldoInicioMes !== undefined && saldoInicioMes !== null) ? saldoInicioMes : (settings?.saldo_manual || 14202000));
 
+  const totalIngresosMes = (totalIngresosCasa || 0) + (totalIngresosPersonal || 0);
+  const totalEgresosMesReal = (totalGastadoCasaReal || 0) + (totalGastadoPersonal || 0);
+  const saldoActualTotal = Math.max(0, saldoBaseCuenta + totalIngresosMes - totalEgresosMesReal);
+
   // Lista unificada de transacciones con saldo cronológico real en cuenta y fondo casa
   const householdTransactionsList = useMemo(() => {
     const txSource = scopeTime === 'all' ? (allTransactions || []) : (monthTransactions || []);

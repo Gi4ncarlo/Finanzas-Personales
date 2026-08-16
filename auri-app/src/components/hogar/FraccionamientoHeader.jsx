@@ -639,7 +639,7 @@ export default function FraccionamientoHeader({
       {/* Termómetro de Gasto Mensual Ultra Dinámico */}
       <TermometroPresupuesto 
         presupuestoPrevisto={presupuestoPrevisto}
-        totalGastadoCasa={totalGastadoCasa}
+        totalGastadoCasa={totalConsumidoPresupuesto}
         totalGastadoPersonal={totalGastadoPersonal}
       />
 
