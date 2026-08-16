@@ -323,7 +323,11 @@ export default function Hogar() {
     return buckets.reduce((acc, b) => acc + Number(b.monto_presupuestado || 0), 0);
   }, [buckets]);
 
-  // Lista unificada de transacciones de casa para la tabla de estadísticas
+  // Saldo base de arranque para el fondo casa y cuenta
+  const saldoBaseCasa = Number(settings?.monto_destinado_casa || 5202000);
+  const saldoBaseCuenta = Number((saldoInicioMes !== undefined && saldoInicioMes !== null) ? saldoInicioMes : (settings?.saldo_manual || 14202000));
+
+  // Lista unificada de transacciones de casa para la tabla de estadísticas con saldo cronológico
   const householdTransactionsList = useMemo(() => {
     const txSource = scopeTime === 'all' ? (allTransactions || []) : (monthTransactions || []);
     if (!txSource) return [];
@@ -351,7 +355,7 @@ export default function Hogar() {
         };
       });
 
-    // Agregar débitos automáticos activos en una simulación de lista
+    // Agregar débitos automáticos activos
     const autos = autoExpenses
       .filter(ae => ae.activo)
       .map(ae => {
@@ -386,8 +390,31 @@ export default function Hogar() {
         };
       });
 
-    return [...manual, ...paidServs, ...autos];
-  }, [scopeTime, allTransactions, monthTransactions, autoExpenses, services, paidServices, buckets, selectedMonth, user, isHouseTransaction]);
+    const combined = [...manual, ...paidServs, ...autos];
+
+    // Ordenar cronológicamente ascendente para calcular la evolución del saldo en cada momento
+    combined.sort((a, b) => a.fecha.localeCompare(b.fecha));
+
+    let runningCasa = saldoBaseCasa;
+    let runningCuenta = saldoBaseCuenta;
+
+    const listWithRunningBalance = combined.map(item => {
+      if (item.esIngreso) {
+        runningCasa += item.monto;
+        runningCuenta += item.monto;
+      } else {
+        runningCasa -= item.monto;
+        runningCuenta -= item.monto;
+      }
+      return {
+        ...item,
+        saldoCasaMomento: runningCasa,
+        saldoCuentaMomento: runningCuenta
+      };
+    });
+
+    return listWithRunningBalance;
+  }, [scopeTime, allTransactions, monthTransactions, autoExpenses, services, paidServices, buckets, selectedMonth, user, isHouseTransaction, saldoBaseCasa, saldoBaseCuenta]);
 
   // Filtrado y Ordenamiento según criterios del usuario
   const filteredAndSortedTransactions = useMemo(() => {
@@ -452,11 +479,13 @@ export default function Hogar() {
       }
     });
     return {
+      saldoInicial: saldoBaseCasa,
       ingresos,
       egresos,
-      balance: ingresos - egresos
+      balance: ingresos - egresos,
+      saldoFinal: saldoBaseCasa + ingresos - egresos
     };
-  }, [filteredAndSortedTransactions]);
+  }, [filteredAndSortedTransactions, saldoBaseCasa]);
 
   // Agrupamiento por criterios
   const groupedTransactions = useMemo(() => {
@@ -1243,8 +1272,12 @@ export default function Hogar() {
                 </span>
               </div>
 
-              {/* KPI Badges de Totales */}
+              {/* KPI Badges de Totales y Saldo Inicial */}
               <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--color-text-muted)' }}>Saldo Inicial Fondo: </span>
+                  <strong style={{ color: 'var(--color-gold)' }}>{formatARS(tableSummary.saldoInicial)}</strong>
+                </div>
                 <div style={{ backgroundColor: 'rgba(152,195,121,0.1)', border: '1px solid rgba(152,195,121,0.3)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem' }}>
                   <span style={{ color: 'var(--color-text-muted)' }}>Ingresos Casa: </span>
                   <strong style={{ color: '#98C379' }}>+{formatARS(tableSummary.ingresos)}</strong>
@@ -1254,9 +1287,9 @@ export default function Hogar() {
                   <strong style={{ color: '#E06C75' }}>-{formatARS(tableSummary.egresos)}</strong>
                 </div>
                 <div style={{ backgroundColor: 'rgba(97,175,239,0.1)', border: '1px solid rgba(97,175,239,0.3)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem' }}>
-                  <span style={{ color: 'var(--color-text-muted)' }}>Neto: </span>
-                  <strong style={{ color: tableSummary.balance >= 0 ? '#98C379' : '#E06C75' }}>
-                    {formatARS(tableSummary.balance)}
+                  <span style={{ color: 'var(--color-text-muted)' }}>Saldo Fondo Resultante: </span>
+                  <strong style={{ color: '#61AFEF' }}>
+                    {formatARS(tableSummary.saldoFinal)}
                   </strong>
                 </div>
               </div>
@@ -1429,6 +1462,7 @@ export default function Hogar() {
                             <th style={{ padding: '10px 18px' }}>Descripción</th>
                             <th style={{ padding: '10px 18px' }}>Tipo</th>
                             <th style={{ padding: '10px 18px', textAlign: 'right' }}>Monto</th>
+                            <th style={{ padding: '10px 18px', textAlign: 'right' }}>Saldo Momento</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1452,6 +1486,9 @@ export default function Hogar() {
                               <td style={{ padding: '10px 18px', textAlign: 'right', fontWeight: 700, color: item.esIngreso ? '#98C379' : '#E06C75' }}>
                                 {item.esIngreso ? `+${formatARS(item.monto)}` : `-${formatARS(item.monto)}`}
                               </td>
+                              <td style={{ padding: '10px 18px', textAlign: 'right', fontWeight: 700, color: 'var(--color-gold)' }}>
+                                {formatARS(item.saldoCasaMomento)}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -1471,6 +1508,7 @@ export default function Hogar() {
                       <th style={{ padding: '12px' }}>Tipo</th>
                       <th style={{ padding: '12px' }}>Sobre Destino</th>
                       <th style={{ padding: '12px', textAlign: 'right' }}>Monto</th>
+                      <th style={{ padding: '12px', textAlign: 'right' }}>Saldo en ese Momento</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1494,6 +1532,14 @@ export default function Hogar() {
                         <td style={{ padding: '12px', color: 'var(--color-text-muted)' }}>{item.sobre}</td>
                         <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: item.esIngreso ? '#98C379' : '#E06C75' }}>
                           {item.esIngreso ? `+${formatARS(item.monto)}` : `-${formatARS(item.monto)}`}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'right' }}>
+                          <div style={{ fontWeight: 700, color: 'var(--color-gold)' }}>
+                            {formatARS(item.saldoCasaMomento)}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '2px' }}>
+                            Fondo Casa
+                          </div>
                         </td>
                       </tr>
                     ))}
