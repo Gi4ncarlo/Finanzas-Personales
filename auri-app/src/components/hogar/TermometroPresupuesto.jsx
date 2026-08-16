@@ -10,7 +10,8 @@ export default function TermometroPresupuesto({
   totalGastadoCasa = 0,
   totalGastadoPersonal = 0
 }) {
-  const totalConsumido = totalGastadoCasa + totalGastadoPersonal;
+  // El termómetro del hogar evalúa exclusivamente el consumo de gastos de la casa
+  const totalConsumido = totalGastadoCasa;
   const porcentajeConsumido = presupuestoPrevisto > 0 
     ? (totalConsumido / presupuestoPrevisto) * 100 
     : 0;

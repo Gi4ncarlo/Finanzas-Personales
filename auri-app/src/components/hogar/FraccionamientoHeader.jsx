@@ -8,6 +8,7 @@ import TransferenciaGastoHogarModal from './TransferenciaGastoHogarModal';
 
 export default function FraccionamientoHeader({ 
   settings, 
+  saldoInicioMes,
   onUpdateSettings, 
   onOpenCalculator,
   onAddFunds,
@@ -45,15 +46,17 @@ export default function FraccionamientoHeader({
   }, [settings]);
 
   // --- CÁLCULOS MATEMÁTICOS SIMÉTRICOS Y EXACTOS ---
+  const baseSaldoMes = (saldoInicioMes !== undefined && saldoInicioMes !== null) ? saldoInicioMes : saldoManual;
   const totalIngresosMes = (totalIngresosCasa || 0) + (totalIngresosPersonal || 0);
   const totalEgresosMes = (totalGastadoCasa || 0) + (totalGastadoPersonal || 0);
 
-  const saldoActualTotal = Math.max(0, saldoManual + totalIngresosMes - totalEgresosMes);
+  const saldoActualTotal = Math.max(0, baseSaldoMes + totalIngresosMes - totalEgresosMes);
   const fondoCasaDisponible = Math.max(0, montoDestinadoCasa + (totalIngresosCasa || 0) - totalGastadoCasa);
-  const dineroPersonalInicial = Math.max(0, saldoManual - montoDestinadoCasa);
+  const dineroPersonalInicial = Math.max(0, baseSaldoMes - montoDestinadoCasa);
   const fondoPersonalDisponible = Math.max(0, dineroPersonalInicial + (totalIngresosPersonal || 0) - totalGastadoPersonal);
 
-  const totalConsumidoPresupuesto = totalGastadoCasa + totalGastadoPersonal;
+  // El presupuesto previsto mensual evalúa exclusivamente el gasto de la casa
+  const totalConsumidoPresupuesto = totalGastadoCasa;
   const porcentajePresupuestoConsumido = presupuestoPrevisto > 0 
     ? (totalConsumidoPresupuesto / presupuestoPrevisto) * 100 
     : 0;
@@ -90,7 +93,7 @@ export default function FraccionamientoHeader({
 
   // --- FILTROS DE ÚLTIMOS 3 INGRESOS Y 3 EGRESOS POR TARJETA ---
 
-  // 1. Saldo Global
+  // 1. Saldo Global (Todo lo que entra y sale de la cuenta)
   const saldoIngresos = useMemo(() => {
     return monthTransactions
       .filter(tx => tx.tipo === 'ingreso')
@@ -105,11 +108,7 @@ export default function FraccionamientoHeader({
       .map(tx => ({ fecha: formatDateShort(tx.fecha), desc: tx.descripcion, monto: tx.monto, esCasa: !!tx.es_gasto_casa }));
   }, [monthTransactions]);
 
-  // 2. Presupuesto
-  const presupuestoIngresos = saldoIngresos;
-  const presupuestoEgresos = saldoEgresos;
-
-  // 3. Fondo Casa
+  // 2. Fondo Casa (Solo de la casa)
   const casaIngresos = useMemo(() => {
     return monthTransactions
       .filter(tx => tx.tipo === 'ingreso' && !!tx.es_gasto_casa)
@@ -123,6 +122,10 @@ export default function FraccionamientoHeader({
       .map(tx => ({ fecha: formatDateShort(tx.fecha), desc: tx.descripcion, monto: tx.monto }));
     return manuales.slice(0, 3);
   }, [monthTransactions]);
+
+  // 3. Presupuesto (Muestra los egresos de la casa)
+  const presupuestoIngresos = casaIngresos;
+  const presupuestoEgresos = casaEgresos;
 
   // 4. Dinero Mío (Personal)
   const personalIngresos = useMemo(() => {
@@ -304,11 +307,11 @@ export default function FraccionamientoHeader({
               padding: '16px', zIndex: 1000, boxShadow: '0 16px 40px rgba(0,0,0,0.8)',
               animation: 'tooltipFadeIn 0.2s ease', color: '#fff', minWidth: '290px'
             }}>
-              <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: 'var(--color-gold)', fontWeight: 700 }}>DESGLOSE DE SALDO</h4>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: 'var(--color-gold)', fontWeight: 700 }}>DESGLOSE DE SALDO EN CUENTA</h4>
               <div style={{ fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: '3px', borderBottom: '1px solid var(--color-border)', paddingBottom: '8px', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Saldo Inicial Partida:</span>
-                  <span>{formatARS(saldoManual)}</span>
+                  <span>Saldo al Inicio del Mes:</span>
+                  <span>{formatARS(baseSaldoMes)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
                   <span>(+) Total Ingresos Mes:</span>
@@ -319,7 +322,7 @@ export default function FraccionamientoHeader({
                   <span>-{formatARS(totalEgresosMes)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--color-gold)', marginTop: '2px' }}>
-                  <span>(=) Saldo Disponible:</span>
+                  <span>(=) Saldo Real Actual:</span>
                   <span>{formatARS(saldoActualTotal)}</span>
                 </div>
               </div>
@@ -379,7 +382,7 @@ export default function FraccionamientoHeader({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ color: 'var(--color-gold)', fontSize: '0.85rem', fontWeight: 500 }}>Presupuesto Previsto</span>
+            <span style={{ color: 'var(--color-gold)', fontSize: '0.85rem', fontWeight: 500 }}>Presupuesto Previsto (Casa)</span>
             <Calendar size={18} style={{ color: 'var(--color-gold)' }} />
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-gold)' }}>
@@ -398,50 +401,31 @@ export default function FraccionamientoHeader({
               padding: '16px', zIndex: 1000, boxShadow: '0 16px 40px rgba(0,0,0,0.8)',
               animation: 'tooltipFadeIn 0.2s ease', color: '#fff', minWidth: '290px'
             }}>
-              <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: 'var(--color-gold)', fontWeight: 700 }}>CONSUMO DE PRESUPUESTO</h4>
+              <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: 'var(--color-gold)', fontWeight: 700 }}>PRESUPUESTO DEL HOGAR</h4>
               <div style={{ fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: '3px', borderBottom: '1px solid var(--color-border)', paddingBottom: '8px', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Punto Presupuesto Inicial:</span>
+                  <span>Presupuesto Fijado Casa:</span>
                   <span>{formatARS(presupuestoPrevisto)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#61AFEF' }}>
-                  <span>Gasto Ejecutado Casa:</span>
-                  <span>{formatARS(totalGastadoCasa)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#98C379' }}>
-                  <span>Gasto Ejecutado Personal:</span>
-                  <span>{formatARS(totalGastadoPersonal)}</span>
+                  <span>(-) Gasto Ejecutado Casa:</span>
+                  <span>-{formatARS(totalGastadoCasa)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginTop: '2px' }}>
-                  <span>Restante Disponible:</span>
+                  <span>(=) Presupuesto Restante Casa:</span>
                   <span style={{ color: presupuestoPrevisto - totalConsumidoPresupuesto >= 0 ? '#2ecc71' : '#e74c3c' }}>
                     {formatARS(presupuestoPrevisto - totalConsumidoPresupuesto)}
                   </span>
                 </div>
               </div>
 
-              {/* 3 Ingresos */}
-              <div style={{ marginBottom: '8px' }}>
-                <div style={{ fontSize: '0.72rem', color: '#2ecc71', fontWeight: 700, marginBottom: '4px' }}>ÚLTIMOS 3 INGRESOS:</div>
-                {presupuestoIngresos.length === 0 ? (
-                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Sin ingresos este mes</div>
-                ) : (
-                  presupuestoIngresos.map((tx, idx) => (
-                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#2ecc71' }}>
-                      <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.fecha} - {tx.desc}</span>
-                      <span>+{formatARS(tx.monto)}</span>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* 3 Egresos */}
+              {/* 3 Egresos Casa */}
               <div>
-                <div style={{ fontSize: '0.72rem', color: '#e74c3c', fontWeight: 700, marginBottom: '4px' }}>ÚLTIMOS 3 GASTOS:</div>
-                {presupuestoEgresos.length === 0 ? (
-                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Sin gastos este mes</div>
+                <div style={{ fontSize: '0.72rem', color: '#e74c3c', fontWeight: 700, marginBottom: '4px' }}>ÚLTIMOS GASTOS DEL HOGAR:</div>
+                {casaEgresos.length === 0 ? (
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Sin gastos de casa este mes</div>
                 ) : (
-                  presupuestoEgresos.map((tx, idx) => (
+                  casaEgresos.map((tx, idx) => (
                     <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#e74c3c' }}>
                       <span style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.fecha} - {tx.desc}</span>
                       <span>-{formatARS(tx.monto)}</span>
@@ -798,6 +782,7 @@ export default function FraccionamientoHeader({
           cardType={selectedModalCard}
           settings={settings}
           saldoManual={saldoManual}
+          saldoInicioMes={baseSaldoMes}
           presupuestoPrevisto={presupuestoPrevisto}
           montoDestinadoCasa={montoDestinadoCasa}
           totalPresupuestadoCasa={totalPresupuestadoCasa}

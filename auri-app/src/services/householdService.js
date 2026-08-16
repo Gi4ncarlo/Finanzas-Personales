@@ -23,11 +23,7 @@ const DEFAULT_SERVICES = [
   { id: 's-internet', nombre: 'Internet / TV (Personal/Fibertel)', monto_estimado: 28000, dia_vencimiento: 20, bucket_id: 'b-servicios', proveedor: 'Personal' }
 ];
 
-const DEFAULT_AUTO_EXPENSES = [
-  { id: 'ae-netflix', nombre: 'Netflix Suscripción', monto: 8500, bucket_id: 'b-servicios', dia_debito: 5, activo: true },
-  { id: 'ae-spotify', nombre: 'Spotify Duo', monto: 3200, bucket_id: 'b-servicios', dia_debito: 10, activo: true },
-  { id: 'ae-seguro', nombre: 'Seguro de Hogar', monto: 12000, bucket_id: 'b-contingencia', dia_debito: 15, activo: true }
-];
+const DEFAULT_AUTO_EXPENSES = [];
 
 /**
  * Obtener configuración del hogar

@@ -144,6 +144,43 @@ export default function Hogar() {
     { revalidateOnFocus: false, dedupingInterval: 60000 }
   );
 
+  // SWR para todas las transacciones históricas (para calcular saldo inicial de mes y saldo real)
+  const { data: allTransactions, mutate: mutateAllTx } = useSWR(
+    user ? ['all_transactions_household', user.id] : null,
+    async () => {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('fecha', { ascending: true });
+
+      if (error) throw error;
+      return data || [];
+    },
+    { revalidateOnFocus: false, dedupingInterval: 60000 }
+  );
+
+  // Saldo inicial de todas las cuentas registradas
+  const totalCuentasSaldoInicial = useMemo(() => {
+    return accounts.reduce((sum, acc) => sum + Number(acc.saldo_inicial || 0), 0);
+  }, [accounts]);
+
+  // Saldo exacto al inicio del mes seleccionado (01 del mes), calculado cronológicamente
+  const saldoInicioMes = useMemo(() => {
+    const basePartida = totalCuentasSaldoInicial > 0 ? totalCuentasSaldoInicial : (settings?.saldo_manual || 11400000);
+    if (!allTransactions) return basePartida;
+
+    let acumulado = basePartida;
+    allTransactions.forEach(tx => {
+      const txFecha = tx.fecha ? String(tx.fecha).slice(0, 10) : '';
+      if (txFecha && txFecha < firstDayOfMonth) {
+        if (tx.tipo === 'ingreso') acumulado += Number(tx.monto || 0);
+        else if (tx.tipo === 'egreso') acumulado -= Number(tx.monto || 0);
+      }
+    });
+    return acumulado;
+  }, [totalCuentasSaldoInicial, settings?.saldo_manual, allTransactions, firstDayOfMonth]);
+
   // Suma total de Gastos Automáticos activos
   const totalDebitoAutomaticoActivo = useMemo(() => {
     return autoExpenses
@@ -542,24 +579,9 @@ export default function Hogar() {
       console.error('Error en Supabase insert:', err);
     }
 
-    // Actualizar saldo de cuenta bancaria si aplica
-    if (accountId) {
-      try {
-        const targetAcc = accounts.find(a => a.id === accountId);
-        if (targetAcc) {
-          const totalDelta = txsToInsert.reduce((acc, tx) => tx.tipo === 'ingreso' ? acc + tx.monto : acc - tx.monto, 0);
-          const actualSaldo = Number(targetAcc.saldo_inicial || 0);
-          await supabase.from('accounts').update({
-            saldo_inicial: Math.max(0, actualSaldo + totalDelta)
-          }).eq('id', accountId);
-        }
-      } catch (accErr) {
-        console.error('Error actualizando cuenta bancaria:', accErr);
-      }
-    }
-
     toast.success('Movimiento registrado correctamente');
     mutateTx();
+    mutateAllTx();
     loadData(true);
   };
 
@@ -688,6 +710,7 @@ export default function Hogar() {
     toast.success('Transacción registrada.');
     setIsTxModalOpen(false);
     mutateTx();
+    mutateAllTx();
     loadData();
   };
 
@@ -862,6 +885,7 @@ export default function Hogar() {
           {/* Header Fraccionamiento Manual */}
           <FraccionamientoHeader
             settings={settings}
+            saldoInicioMes={saldoInicioMes}
             onUpdateSettings={handleUpdateSettings}
             onAddFunds={handleAddFunds}
             accounts={accounts}

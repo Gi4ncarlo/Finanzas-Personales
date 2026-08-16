@@ -11,6 +11,7 @@ export default function DesgloseCardModal({
   cardType = 'saldo', // 'saldo' | 'presupuesto' | 'casa' | 'personal'
   settings,
   saldoManual = 0,
+  saldoInicioMes,
   presupuestoPrevisto = 0,
   montoDestinadoCasa = 0,
   totalPresupuestadoCasa = 0,
@@ -39,8 +40,8 @@ export default function DesgloseCardModal({
       accentBg: 'rgba(229, 192, 123, 0.15)'
     },
     presupuesto: {
-      title: 'Consumo y Ejecución de Presupuesto',
-      subtitle: 'Seguimiento de gastos frente al presupuesto mensual fijado para el hogar y personales.',
+      title: 'Consumo y Ejecución de Presupuesto del Hogar',
+      subtitle: 'Seguimiento de gastos frente al presupuesto mensual fijado para la casa y supervivencia.',
       icon: Calendar,
       color: '#E5C07B',
       accentBg: 'rgba(229, 192, 123, 0.15)'
@@ -65,15 +66,17 @@ export default function DesgloseCardModal({
   const cardConfig = cardConfigMap[currentType] || cardConfigMap.saldo;
 
   // Cálculos matemáticos
+  const baseSaldoMes = (saldoInicioMes !== undefined && saldoInicioMes !== null) ? saldoInicioMes : (saldoManual || 0);
   const totalIngresosMes = (totalIngresosCasa || 0) + (totalIngresosPersonal || 0);
   const totalEgresosMes = (totalGastadoCasa || 0) + (totalGastadoPersonal || 0);
-  const saldoActualTotal = Math.max(0, (saldoManual || 0) + totalIngresosMes - totalEgresosMes);
+  const saldoActualTotal = Math.max(0, baseSaldoMes + totalIngresosMes - totalEgresosMes);
 
   const fondoCasaDisponible = Math.max(0, (montoDestinadoCasa || 0) + (totalIngresosCasa || 0) - (totalGastadoCasa || 0));
-  const dineroPersonalInicial = Math.max(0, (saldoManual || 0) - (montoDestinadoCasa || 0));
+  const dineroPersonalInicial = Math.max(0, baseSaldoMes - (montoDestinadoCasa || 0));
   const fondoPersonalDisponible = Math.max(0, dineroPersonalInicial + (totalIngresosPersonal || 0) - (totalGastadoPersonal || 0));
 
-  const totalConsumidoPresupuesto = (totalGastadoCasa || 0) + (totalGastadoPersonal || 0);
+  // El presupuesto mide estrictamente los gastos de casa
+  const totalConsumidoPresupuesto = totalGastadoCasa || 0;
   const presupuestoTotal = presupuestoPrevisto || 0;
 
   // Garantizar arrays seguros
@@ -109,18 +112,18 @@ export default function DesgloseCardModal({
         tag: tx.es_gasto_casa ? 'Casa' : 'Personal'
       }));
     } else if (currentType === 'presupuesto') {
-      // Egresos manuales + autos activos
-      const manualEgresos = safeMonthTxs
-        .filter(tx => tx.tipo === 'egreso')
+      // Exclusivamente egresos de la casa + autos activos del hogar
+      const manualEgresosCasa = safeMonthTxs
+        .filter(tx => tx.tipo === 'egreso' && !!tx.es_gasto_casa)
         .map(tx => ({
           id: tx.id,
           fecha: formatDate(tx.fecha),
           rawFecha: tx.fecha || '',
-          descripcion: tx.descripcion || 'Gasto',
+          descripcion: tx.descripcion || 'Gasto Casa',
           monto: Number(tx.monto || 0),
           tipo: 'egreso',
-          esCasa: !!tx.es_gasto_casa,
-          tag: tx.es_gasto_casa ? 'Gasto Casa' : 'Gasto Personal'
+          esCasa: true,
+          tag: 'Gasto Casa'
         }));
 
       const autos = safeAutoExpenses
@@ -136,7 +139,7 @@ export default function DesgloseCardModal({
           tag: 'Débito Auto Casa'
         }));
 
-      list = [...manualEgresos, ...autos];
+      list = [...manualEgresosCasa, ...autos];
     } else if (currentType === 'casa') {
       // Movimientos de casa
       const manualCasa = safeMonthTxs
@@ -271,8 +274,8 @@ export default function DesgloseCardModal({
         {currentType === 'saldo' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
             <div style={{ backgroundColor: '#1E2536', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#9DA8BA', textTransform: 'uppercase', fontWeight: 600 }}>Saldo Inicial Partida</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#FFF', marginTop: '2px' }}>{formatARS(saldoManual)}</div>
+              <div style={{ fontSize: '0.72rem', color: '#9DA8BA', textTransform: 'uppercase', fontWeight: 600 }}>Saldo al Inicio del Mes</div>
+              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#FFF', marginTop: '2px' }}>{formatARS(baseSaldoMes)}</div>
             </div>
             <div style={{ backgroundColor: 'rgba(46, 204, 113, 0.1)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(46, 204, 113, 0.3)' }}>
               <div style={{ fontSize: '0.72rem', color: '#2ecc71', textTransform: 'uppercase', fontWeight: 600 }}>(+) Total Ingresos Mes</div>
@@ -292,19 +295,15 @@ export default function DesgloseCardModal({
         {currentType === 'presupuesto' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
             <div style={{ backgroundColor: '#1E2536', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#E5C07B', textTransform: 'uppercase', fontWeight: 600 }}>Presupuesto Previsto</div>
+              <div style={{ fontSize: '0.72rem', color: '#E5C07B', textTransform: 'uppercase', fontWeight: 600 }}>Presupuesto Fijado Casa</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#E5C07B', marginTop: '2px' }}>{formatARS(presupuestoTotal)}</div>
             </div>
             <div style={{ backgroundColor: 'rgba(97, 175, 239, 0.1)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(97, 175, 239, 0.3)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#61AFEF', textTransform: 'uppercase', fontWeight: 600 }}>Gasto Casa Ejecutado</div>
+              <div style={{ fontSize: '0.72rem', color: '#61AFEF', textTransform: 'uppercase', fontWeight: 600 }}>Gasto Ejecutado Casa</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#61AFEF', marginTop: '2px' }}>{formatARS(totalGastadoCasa)}</div>
             </div>
-            <div style={{ backgroundColor: 'rgba(152, 195, 121, 0.1)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(152, 195, 121, 0.3)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#98C379', textTransform: 'uppercase', fontWeight: 600 }}>Gasto Personal Ejecutado</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#98C379', marginTop: '2px' }}>{formatARS(totalGastadoPersonal)}</div>
-            </div>
             <div style={{ backgroundColor: '#1E2536', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#9DA8BA', textTransform: 'uppercase', fontWeight: 600 }}>Restante Disponible</div>
+              <div style={{ fontSize: '0.72rem', color: '#9DA8BA', textTransform: 'uppercase', fontWeight: 600 }}>Restante Disponible Casa</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: presupuestoTotal - totalConsumidoPresupuesto >= 0 ? '#2ecc71' : '#e74c3c', marginTop: '2px' }}>
                 {formatARS(presupuestoTotal - totalConsumidoPresupuesto)}
               </div>
