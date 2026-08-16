@@ -34,28 +34,28 @@ export default function FraccionamientoHeader({
   const [selectedModalCard, setSelectedModalCard] = useState(null); // 'saldo' | 'presupuesto' | 'casa' | 'personal' | null
   
   // Valores manuales iniciales (Punto de Partida)
-  const [saldoManual, setSaldoManual] = useState(settings?.saldo_manual || 11400000);
+  const [saldoManual, setSaldoManual] = useState(settings?.saldo_manual || 17285000);
   const [presupuestoPrevisto, setPresupuestoPrevisto] = useState(settings?.presupuesto_previsto_manual || 3000000);
-  const [montoDestinadoCasa, setMontoDestinadoCasa] = useState(settings?.monto_destinado_casa || 2000000);
+  const [montoDestinadoCasa, setMontoDestinadoCasa] = useState(settings?.monto_destinado_casa || 8285000);
   const [ajusteIngresoPersonal, setAjusteIngresoPersonal] = useState(settings?.ajuste_ingreso_personal || 0);
 
   useEffect(() => {
     if (settings) {
-      setSaldoManual(settings.saldo_manual !== undefined ? settings.saldo_manual : 11400000);
-      setPresupuestoPrevisto(settings.presupuesto_previsto_manual !== undefined ? settings.presupuesto_previsto_manual : 3000000);
-      setMontoDestinadoCasa(settings.monto_destinado_casa !== undefined ? settings.monto_destinado_casa : 2000000);
-      setAjusteIngresoPersonal(settings.ajuste_ingreso_personal !== undefined ? settings.ajuste_ingreso_personal : 0);
+      setSaldoManual(settings.saldo_manual !== undefined ? Number(settings.saldo_manual) : 17285000);
+      setPresupuestoPrevisto(settings.presupuesto_previsto_manual !== undefined ? Number(settings.presupuesto_previsto_manual) : 3000000);
+      setMontoDestinadoCasa(settings.monto_destinado_casa !== undefined ? Number(settings.monto_destinado_casa) : 8285000);
+      setAjusteIngresoPersonal(settings.ajuste_ingreso_personal !== undefined ? Number(settings.ajuste_ingreso_personal) : 0);
     }
   }, [settings]);
 
   // --- CÁLCULOS MATEMÁTICOS SIMÉTRICOS Y EXACTOS ---
-  const baseSaldoMes = (saldoInicioMes !== undefined && saldoInicioMes !== null) ? saldoInicioMes : saldoManual;
+  const baseSaldoMes = Number(settings?.saldo_manual !== undefined ? settings.saldo_manual : ((saldoInicioMes !== undefined && saldoInicioMes !== null) ? saldoInicioMes : saldoManual));
   const totalIngresosMes = (totalIngresosCasa || 0) + (totalIngresosPersonal || 0);
   const totalEgresosMes = (totalGastadoCasa || 0) + (totalGastadoPersonal || 0);
 
   const saldoActualTotal = Math.max(0, baseSaldoMes + totalIngresosMes - totalEgresosMes);
-  const fondoCasaDisponible = Math.max(0, montoDestinadoCasa + (totalIngresosCasa || 0) - totalGastadoCasa);
-  const dineroPersonalInicial = Math.max(0, baseSaldoMes - montoDestinadoCasa);
+  const fondoCasaDisponible = Math.max(0, Number(montoDestinadoCasa) + (totalIngresosCasa || 0) - totalGastadoCasa);
+  const dineroPersonalInicial = Math.max(0, baseSaldoMes - Number(montoDestinadoCasa));
   const fondoPersonalDisponible = Math.max(0, dineroPersonalInicial + (totalIngresosPersonal || 0) - totalGastadoPersonal);
 
   // El presupuesto previsto mensual evalúa exclusivamente el gasto de la casa

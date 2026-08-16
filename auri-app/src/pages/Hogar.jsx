@@ -166,9 +166,12 @@ export default function Hogar() {
     return accounts.reduce((sum, acc) => sum + Number(acc.saldo_inicial || 0), 0);
   }, [accounts]);
 
-  // Saldo exacto al inicio del mes seleccionado (01 del mes), calculado cronológicamente
+  // Saldo exacto al inicio del mes seleccionado (01 del mes)
   const saldoInicioMes = useMemo(() => {
-    const basePartida = totalCuentasSaldoInicial > 0 ? totalCuentasSaldoInicial : (settings?.saldo_manual || 11400000);
+    if (settings?.saldo_manual !== undefined && settings?.saldo_manual !== null) {
+      return Number(settings.saldo_manual);
+    }
+    const basePartida = totalCuentasSaldoInicial > 0 ? totalCuentasSaldoInicial : 17285000;
     if (!allTransactions) return basePartida;
 
     let acumulado = basePartida;
@@ -180,7 +183,7 @@ export default function Hogar() {
       }
     });
     return acumulado;
-  }, [totalCuentasSaldoInicial, settings?.saldo_manual, allTransactions, firstDayOfMonth]);
+  }, [settings?.saldo_manual, totalCuentasSaldoInicial, allTransactions, firstDayOfMonth]);
 
   // Suma total de Gastos Automáticos activos
   const totalDebitoAutomaticoActivo = useMemo(() => {
