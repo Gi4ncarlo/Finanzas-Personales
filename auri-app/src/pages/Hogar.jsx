@@ -213,13 +213,15 @@ export default function Hogar() {
       .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
   }, [monthTransactions, isHouseTx]);
 
-  // Total Ingresos del Mes Personales (Comisiones propias, etc.)
+  // Total Ingresos del Mes Personales (Comisiones propias + ajuste de conciliación temporal)
   const totalIngresosPersonal = useMemo(() => {
     if (!monthTransactions) return 0;
-    return monthTransactions
+    const txSum = monthTransactions
       .filter(tx => tx.tipo === 'ingreso' && !isHouseTx(tx))
       .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
-  }, [monthTransactions, isHouseTx]);
+    const ajuste = Number(settings?.ajuste_ingreso_personal || 0);
+    return txSum + ajuste;
+  }, [monthTransactions, isHouseTx, settings]);
 
   // Gasto Mensual Real Total de la Casa
   const totalGastadoCasa = useMemo(() => {

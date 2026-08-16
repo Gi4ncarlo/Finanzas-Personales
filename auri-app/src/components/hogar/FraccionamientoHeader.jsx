@@ -36,12 +36,14 @@ export default function FraccionamientoHeader({
   const [saldoManual, setSaldoManual] = useState(settings?.saldo_manual || 11400000);
   const [presupuestoPrevisto, setPresupuestoPrevisto] = useState(settings?.presupuesto_previsto_manual || 3000000);
   const [montoDestinadoCasa, setMontoDestinadoCasa] = useState(settings?.monto_destinado_casa || 2000000);
+  const [ajusteIngresoPersonal, setAjusteIngresoPersonal] = useState(settings?.ajuste_ingreso_personal || 0);
 
   useEffect(() => {
     if (settings) {
       setSaldoManual(settings.saldo_manual !== undefined ? settings.saldo_manual : 11400000);
       setPresupuestoPrevisto(settings.presupuesto_previsto_manual !== undefined ? settings.presupuesto_previsto_manual : 3000000);
       setMontoDestinadoCasa(settings.monto_destinado_casa !== undefined ? settings.monto_destinado_casa : 2000000);
+      setAjusteIngresoPersonal(settings.ajuste_ingreso_personal !== undefined ? settings.ajuste_ingreso_personal : 0);
     }
   }, [settings]);
 
@@ -67,7 +69,8 @@ export default function FraccionamientoHeader({
       regla_tipo: 'manual',
       saldo_manual: Number(saldoManual),
       presupuesto_previsto_manual: Number(presupuestoPrevisto),
-      monto_destinado_casa: Number(montoDestinadoCasa)
+      monto_destinado_casa: Number(montoDestinadoCasa),
+      ajuste_ingreso_personal: Number(ajusteIngresoPersonal)
     });
     setIsEditModalOpen(false);
   };
@@ -718,6 +721,26 @@ export default function FraccionamientoHeader({
               />
               <span style={{ fontSize: '0.75rem', color: '#98C379', display: 'block', marginTop: '6px', fontWeight: 600 }}>
                 Tu Dinero Personal Inicial restante es: {formatARS(saldoManual - montoDestinadoCasa)}
+              </span>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text)', fontWeight: 600, marginBottom: '6px' }}>
+                Ajuste Temporal de Ingreso Personal / Conciliación (ARS):
+              </label>
+              <input
+                type="number"
+                value={ajusteIngresoPersonal}
+                onChange={(e) => setAjusteIngresoPersonal(e.target.value)}
+                placeholder="Ej. 1000000"
+                style={{
+                  width: '100%', padding: '10px', borderRadius: '8px',
+                  backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
+                  color: 'var(--color-text)', fontSize: '0.95rem'
+                }}
+              />
+              <span style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)', marginTop: '4px', display: 'block' }}>
+                Suma a Dinero Mío en Hogar sin alterar los saldos reales de cuentas ni el patrimonio neto de tu Dashboard.
               </span>
             </div>
 
