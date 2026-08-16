@@ -52,9 +52,10 @@ export default function Hogar() {
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7)); // 'YYYY-MM'
 
   // Filtros y Criterios de Agrupación/Ordenamiento para el Seguimiento Detallado
+  const [scopeTime, setScopeTime] = useState('month'); // 'month' | 'all'
   const [sortCriterion, setSortCriterion] = useState('fecha_desc'); // 'fecha_desc' | 'fecha_asc' | 'monto_desc' | 'monto_asc' | 'descripcion_asc'
   const [groupByCriterion, setGroupByCriterion] = useState('none'); // 'none' | 'sobre' | 'tipo'
-  const [filterTipo, setFilterTipo] = useState('all'); // 'all' | 'gasto' | 'ingreso' | 'auto'
+  const [filterTipo, setFilterTipo] = useState('all'); // 'all' | 'gasto' | 'ingreso' | 'auto' | 'servicio'
   const [filterBucket, setFilterBucket] = useState('all'); // 'all' | bucket_id
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -322,10 +323,11 @@ export default function Hogar() {
 
   // Lista unificada de transacciones de casa para la tabla de estadísticas
   const householdTransactionsList = useMemo(() => {
-    if (!monthTransactions) return [];
+    const txSource = scopeTime === 'all' ? (allTransactions || []) : (monthTransactions || []);
+    if (!txSource) return [];
 
-    const manual = monthTransactions
-      .filter(tx => isHouseTransaction(tx))
+    const manual = txSource
+      .filter(tx => isHouseTransaction(tx, user?.id))
       .map(tx => {
         const localMappingKey = `auri_local_tx_household_mapping_${user?.id}`;
         const localMapping = JSON.parse(localStorage.getItem(localMappingKey) || '{}');
@@ -353,7 +355,7 @@ export default function Hogar() {
       .map(ae => {
         const bName = buckets.find(b => b.id === ae.bucket_id)?.nombre || 'General Casa';
         return {
-          id: ae.id,
+          id: `ae_${ae.id}`,
           fecha: `${selectedMonth}-${String(ae.dia_debito).padStart(2, '0')}`,
           descripcion: `${ae.nombre} (Débito Automático)`,
           monto: Number(ae.monto || 0),
@@ -364,8 +366,26 @@ export default function Hogar() {
         };
       });
 
-    return [...manual, ...autos];
-  }, [monthTransactions, autoExpenses, buckets, selectedMonth, user, isHouseTransaction]);
+    // Agregar servicios del hogar marcados como pagados
+    const paidServs = services
+      .filter(s => !!paidServices[s.id])
+      .filter(s => !manual.some(tx => tx.descripcion?.toLowerCase().includes(s.nombre?.toLowerCase())))
+      .map(s => {
+        const bName = buckets.find(b => b.id === s.bucket_id)?.nombre || 'Servicios (Luz, Agua, Gas, Internet)';
+        return {
+          id: `svc_${s.id}_${selectedMonth}`,
+          fecha: `${selectedMonth}-01`,
+          descripcion: `${s.nombre} (Servicio Pagado)`,
+          monto: Number(s.monto_estimado || 0),
+          tipo: 'Servicio Pagado',
+          esIngreso: false,
+          sobre: bName,
+          bucketId: s.bucket_id
+        };
+      });
+
+    return [...manual, ...paidServs, ...autos];
+  }, [scopeTime, allTransactions, monthTransactions, autoExpenses, services, paidServices, buckets, selectedMonth, user, isHouseTransaction]);
 
   // Filtrado y Ordenamiento según criterios del usuario
   const filteredAndSortedTransactions = useMemo(() => {
@@ -373,11 +393,13 @@ export default function Hogar() {
 
     // 1. Filtro por tipo
     if (filterTipo === 'gasto') {
-      list = list.filter(item => !item.esIngreso && item.tipo !== 'Automático');
+      list = list.filter(item => !item.esIngreso && item.tipo === 'Gasto Manual');
     } else if (filterTipo === 'ingreso') {
       list = list.filter(item => item.esIngreso);
     } else if (filterTipo === 'auto') {
       list = list.filter(item => item.tipo === 'Automático');
+    } else if (filterTipo === 'servicio') {
+      list = list.filter(item => item.tipo === 'Servicio Pagado');
     }
 
     // 2. Filtro por sobre
@@ -415,6 +437,24 @@ export default function Hogar() {
 
     return list;
   }, [householdTransactionsList, filterTipo, filterBucket, searchQuery, sortCriterion, buckets]);
+
+  // Totales de la tabla filtrada
+  const tableSummary = useMemo(() => {
+    let ingresos = 0;
+    let egresos = 0;
+    filteredAndSortedTransactions.forEach(item => {
+      if (item.esIngreso) {
+        ingresos += item.monto;
+      } else {
+        egresos += item.monto;
+      }
+    });
+    return {
+      ingresos,
+      egresos,
+      balance: ingresos - egresos
+    };
+  }, [filteredAndSortedTransactions]);
 
   // Agrupamiento por criterios
   const groupedTransactions = useMemo(() => {
@@ -1024,33 +1064,88 @@ export default function Hogar() {
             display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px',
             backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: '12px', padding: '16px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <Calendar size={20} style={{ color: 'var(--color-gold)' }} />
-              <span style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)' }}>Mes de Análisis:</span>
-              <input
-                type="month"
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                style={{
-                  padding: '6px 12px', borderRadius: '8px',
-                  backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
-                  color: 'var(--color-text)', fontSize: '0.9rem'
-                }}
-              />
+            <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div style={{
+                display: 'flex', backgroundColor: 'var(--color-surface-2)', padding: '3px', borderRadius: '8px', border: '1px solid var(--color-border)'
+              }}>
+                <button
+                  type="button"
+                  onClick={() => setScopeTime('month')}
+                  style={{
+                    padding: '6px 14px', borderRadius: '6px', border: 'none',
+                    backgroundColor: scopeTime === 'month' ? 'var(--color-gold)' : 'transparent',
+                    color: scopeTime === 'month' ? '#000' : 'var(--color-text-muted)',
+                    fontWeight: scopeTime === 'month' ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer'
+                  }}
+                >
+                  📅 Mes Seleccionado
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScopeTime('all')}
+                  style={{
+                    padding: '6px 14px', borderRadius: '6px', border: 'none',
+                    backgroundColor: scopeTime === 'all' ? 'var(--color-gold)' : 'transparent',
+                    color: scopeTime === 'all' ? '#000' : 'var(--color-text-muted)',
+                    fontWeight: scopeTime === 'all' ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer'
+                  }}
+                >
+                  🌐 Histórico Completo
+                </button>
+              </div>
+
+              {scopeTime === 'month' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Calendar size={18} style={{ color: 'var(--color-gold)' }} />
+                  <input
+                    type="month"
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    style={{
+                      padding: '6px 12px', borderRadius: '8px',
+                      backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)',
+                      color: 'var(--color-text)', fontSize: '0.9rem'
+                    }}
+                  />
+                </div>
+              )}
             </div>
 
-            <button
-              onClick={handlePrintPDF}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                backgroundColor: 'var(--color-gold)', color: '#000',
-                border: 'none', borderRadius: '8px', padding: '10px 18px',
-                fontWeight: 700, fontSize: '0.9rem', cursor: 'pointer'
-              }}
-            >
-              <Printer size={18} />
-              <span>Imprimir Resumen PDF</span>
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setTxInitialData({
+                    tipo: 'egreso',
+                    es_gasto_casa: true,
+                    fecha: new Date().toISOString().slice(0, 10)
+                  });
+                  setIsTxModalOpen(true);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  backgroundColor: '#61AFEF', color: '#000',
+                  border: 'none', borderRadius: '8px', padding: '10px 16px',
+                  fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer'
+                }}
+              >
+                <Plus size={16} />
+                <span>Registrar Movimiento Casa</span>
+              </button>
+
+              <button
+                onClick={handlePrintPDF}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  backgroundColor: 'var(--color-gold)', color: '#000',
+                  border: 'none', borderRadius: '8px', padding: '10px 18px',
+                  fontWeight: 700, fontSize: '0.88rem', cursor: 'pointer'
+                }}
+              >
+                <Printer size={18} />
+                <span>Imprimir Resumen PDF</span>
+              </button>
+            </div>
           </div>
 
           {/* Gráficos */}
@@ -1129,20 +1224,40 @@ export default function Hogar() {
 
           </div>
 
-          {/* Listado Detallado de Gastos de Casa */}
+          {/* Listado Detallado de Gastos e Ingresos de Casa */}
           <div style={{
             backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)',
             borderRadius: '16px', padding: '24px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)'
           }}>
             {/* Header Title & Counter */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ListFilter size={22} style={{ color: 'var(--color-gold)' }} />
-                Seguimiento Detallado de Movimientos de Casa
-              </h3>
-              <span style={{ backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)', padding: '4px 12px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>
-                {filteredAndSortedTransactions.length} movimiento{filteredAndSortedTransactions.length !== 1 ? 's' : ''}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: 'var(--color-text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ListFilter size={22} style={{ color: 'var(--color-gold)' }} />
+                  Seguimiento Detallado de Movimientos de Casa
+                </h3>
+                <span style={{ backgroundColor: 'var(--color-surface-2)', border: '1px solid var(--color-border)', padding: '4px 12px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--color-text-muted)' }}>
+                  {filteredAndSortedTransactions.length} movimiento{filteredAndSortedTransactions.length !== 1 ? 's' : ''}
+                </span>
+              </div>
+
+              {/* KPI Badges de Totales */}
+              <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ backgroundColor: 'rgba(152,195,121,0.1)', border: '1px solid rgba(152,195,121,0.3)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--color-text-muted)' }}>Ingresos Casa: </span>
+                  <strong style={{ color: '#98C379' }}>+{formatARS(tableSummary.ingresos)}</strong>
+                </div>
+                <div style={{ backgroundColor: 'rgba(224,108,117,0.1)', border: '1px solid rgba(224,108,117,0.3)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--color-text-muted)' }}>Gastos Casa: </span>
+                  <strong style={{ color: '#E06C75' }}>-{formatARS(tableSummary.egresos)}</strong>
+                </div>
+                <div style={{ backgroundColor: 'rgba(97,175,239,0.1)', border: '1px solid rgba(97,175,239,0.3)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--color-text-muted)' }}>Neto: </span>
+                  <strong style={{ color: tableSummary.balance >= 0 ? '#98C379' : '#E06C75' }}>
+                    {formatARS(tableSummary.balance)}
+                  </strong>
+                </div>
+              </div>
             </div>
 
             {/* Control Bar: Búsqueda, Ordenamiento, Agrupación y Filtros */}
@@ -1233,6 +1348,7 @@ export default function Hogar() {
                   <option value="all">Todos los tipos</option>
                   <option value="gasto">Solo Gastos Manuales</option>
                   <option value="auto">Solo Débitos Automáticos</option>
+                  <option value="servicio">Solo Servicios Pagados</option>
                   <option value="ingreso">Solo Ingresos Casa</option>
                 </select>
               </div>
@@ -1321,8 +1437,12 @@ export default function Hogar() {
                               <td style={{ padding: '10px 18px' }}>
                                 <span style={{
                                   padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600,
-                                  backgroundColor: item.esIngreso ? 'rgba(152,195,121,0.15)' : (item.tipo === 'Automático' ? 'rgba(201,168,76,0.15)' : 'rgba(97,175,239,0.15)'),
-                                  color: item.esIngreso ? '#98C379' : (item.tipo === 'Automático' ? 'var(--color-gold)' : '#61AFEF')
+                                  backgroundColor: item.esIngreso 
+                                    ? 'rgba(152,195,121,0.15)' 
+                                    : (item.tipo === 'Automático' ? 'rgba(201,168,76,0.15)' : (item.tipo === 'Servicio Pagado' ? 'rgba(229,192,123,0.15)' : 'rgba(97,175,239,0.15)')),
+                                  color: item.esIngreso 
+                                    ? '#98C379' 
+                                    : (item.tipo === 'Automático' ? 'var(--color-gold)' : (item.tipo === 'Servicio Pagado' ? '#E5C07B' : '#61AFEF'))
                                 }}>
                                   {item.tipo}
                                 </span>
@@ -1359,8 +1479,12 @@ export default function Hogar() {
                         <td style={{ padding: '12px' }}>
                           <span style={{
                             padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 600,
-                            backgroundColor: item.esIngreso ? 'rgba(152,195,121,0.15)' : (item.tipo === 'Automático' ? 'rgba(201,168,76,0.15)' : 'rgba(97,175,239,0.15)'),
-                            color: item.esIngreso ? '#98C379' : (item.tipo === 'Automático' ? 'var(--color-gold)' : '#61AFEF')
+                            backgroundColor: item.esIngreso 
+                              ? 'rgba(152,195,121,0.15)' 
+                              : (item.tipo === 'Automático' ? 'rgba(201,168,76,0.15)' : (item.tipo === 'Servicio Pagado' ? 'rgba(229,192,123,0.15)' : 'rgba(97,175,239,0.15)')),
+                            color: item.esIngreso 
+                              ? '#98C379' 
+                              : (item.tipo === 'Automático' ? 'var(--color-gold)' : (item.tipo === 'Servicio Pagado' ? '#E5C07B' : '#61AFEF'))
                           }}>
                             {item.tipo}
                           </span>
