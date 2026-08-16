@@ -987,7 +987,7 @@ export default function Hogar() {
             accounts={accounts}
             onOpenCalculator={() => setIsCalculatorOpen(true)}
             totalPresupuestadoCasa={totalPresupuestadoCasa}
-            totalGastadoCasa={totalGastadoCasaReal}
+            totalGastadoCasa={totalGastadoCasaPresupuesto}
             totalGastadoCasaPresupuesto={totalGastadoCasaPresupuesto}
             totalDebitoAutomaticoActivo={totalDebitoAutomaticoActivo}
             totalGastadoPersonal={totalGastadoPersonal}
@@ -1309,12 +1309,12 @@ export default function Hogar() {
                   <strong style={{ color: '#61AFEF' }}>{formatARS(saldoBaseCasa)}</strong>
                 </div>
                 <div style={{ backgroundColor: 'rgba(152,195,121,0.1)', border: '1px solid rgba(152,195,121,0.3)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem' }}>
-                  <span style={{ color: 'var(--color-text-muted)' }}>Ingresos Totales: </span>
-                  <strong style={{ color: '#98C379' }}>+{formatARS(totalIngresosMes)}</strong>
+                  <span style={{ color: 'var(--color-text-muted)' }}>Ingresos Casa: </span>
+                  <strong style={{ color: '#98C379' }}>+{formatARS(tableSummary.ingresos)}</strong>
                 </div>
                 <div style={{ backgroundColor: 'rgba(224,108,117,0.1)', border: '1px solid rgba(224,108,117,0.3)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem' }}>
-                  <span style={{ color: 'var(--color-text-muted)' }}>Egresos Totales: </span>
-                  <strong style={{ color: '#E06C75' }}>-{formatARS(totalEgresosMes)}</strong>
+                  <span style={{ color: 'var(--color-text-muted)' }}>Gastos Casa Totales: </span>
+                  <strong style={{ color: '#E06C75' }}>-{formatARS(tableSummary.egresos)}</strong>
                 </div>
                 <div style={{ backgroundColor: 'rgba(201,168,76,0.15)', border: '1px solid var(--color-gold)', padding: '6px 12px', borderRadius: '8px', fontSize: '0.8rem' }}>
                   <span style={{ color: 'var(--color-text-muted)' }}>Saldo Actual Banco: </span>
