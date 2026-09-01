@@ -12,19 +12,18 @@ export default function DesgloseCardModal({
   settings,
   saldoManual = 0,
   saldoInicioMes,
+  saldoCasaInicioMes,
+  saldoPersonalInicioMes,
   saldoActualTotal: propSaldoActualTotal,
   fondoCasaDisponible: propFondoCasaDisponible,
   fondoPersonalDisponible: propFondoPersonalDisponible,
   basePartidaCasa,
   basePartidaPersonal,
-  totalIngresosCasaAcumulado,
-  totalGastosCasaRealAcumulado,
-  totalIngresosPersonalAcumulado,
-  totalGastosPersonalAcumulado,
   presupuestoPrevisto = 0,
   montoDestinadoCasa = 0,
   totalPresupuestadoCasa = 0,
   totalGastadoCasa = 0,
+  totalGastadoCasaReal = 0,
   totalDebitoAutomaticoActivo = 0,
   totalGastadoPersonal = 0,
   totalIngresosCasa = 0,
@@ -75,29 +74,29 @@ export default function DesgloseCardModal({
   const currentType = cardType || 'saldo';
   const cardConfig = cardConfigMap[currentType] || cardConfigMap.saldo;
 
-  // Cálculos matemáticos
-  const saldoBasePartida = saldoManual || 17285000;
-  const casaBasePartida = basePartidaCasa !== undefined ? basePartidaCasa : (montoDestinadoCasa || 8285000);
-  const dineroPersonalInicial = basePartidaPersonal !== undefined ? basePartidaPersonal : Math.max(0, saldoBasePartida - casaBasePartida);
-
-  const saldoActualTotal = propSaldoActualTotal !== undefined 
-    ? propSaldoActualTotal 
-    : Math.max(0, saldoBasePartida + (totalIngresosCasa || 0) + (totalIngresosPersonal || 0) - (totalGastadoCasa || 0) - (totalGastadoPersonal || 0));
+  // Cálculos matemáticos del mes
+  const saldoBasePartida = (saldoInicioMes !== undefined && saldoInicioMes !== null) ? saldoInicioMes : (saldoManual || 17285000);
+  const casaBasePartida = (saldoCasaInicioMes !== undefined && saldoCasaInicioMes !== null) ? saldoCasaInicioMes : (basePartidaCasa !== undefined ? basePartidaCasa : (montoDestinadoCasa || 8285000));
+  const dineroPersonalInicial = (saldoPersonalInicioMes !== undefined && saldoPersonalInicioMes !== null) ? saldoPersonalInicioMes : (basePartidaPersonal !== undefined ? basePartidaPersonal : Math.max(0, saldoBasePartida - casaBasePartida));
 
   const fondoCasaDisponible = propFondoCasaDisponible !== undefined 
     ? propFondoCasaDisponible 
-    : Math.max(0, (casaBasePartida || 0) + (totalIngresosCasa || 0) - (totalGastadoCasa || 0));
+    : Math.max(0, casaBasePartida + (totalIngresosCasa || 0) - (totalGastadoCasaReal || totalGastadoCasa || 0));
 
   const fondoPersonalDisponible = propFondoPersonalDisponible !== undefined 
     ? propFondoPersonalDisponible 
     : Math.max(0, dineroPersonalInicial + (totalIngresosPersonal || 0) - (totalGastadoPersonal || 0));
 
+  const saldoActualTotal = propSaldoActualTotal !== undefined 
+    ? propSaldoActualTotal 
+    : (fondoCasaDisponible + fondoPersonalDisponible);
+
   // El presupuesto mide estrictamente los gastos de casa
   const totalConsumidoPresupuesto = totalGastadoCasa || 0;
   const presupuestoTotal = presupuestoPrevisto || 0;
 
-  // Garantizar arrays seguros
-  const safeTxs = (allTransactions && allTransactions.length > 0) ? allTransactions : (monthTransactions || []);
+  // Garantizar que la lista de movimientos del modal pertenezca al mes seleccionado
+  const safeTxs = monthTransactions || [];
   const safeAutoExpenses = autoExpenses || [];
   const safeBuckets = buckets || [];
 
@@ -117,7 +116,7 @@ export default function DesgloseCardModal({
     let list = [];
 
     if (currentType === 'saldo') {
-      // Todas las transacciones
+      // Todas las transacciones del mes
       list = safeTxs.map(tx => ({
         id: tx.id,
         fecha: formatDate(tx.fecha),
@@ -158,7 +157,7 @@ export default function DesgloseCardModal({
 
       list = [...manualEgresosCasa, ...autos];
     } else if (currentType === 'casa') {
-      // Movimientos de casa
+      // Movimientos de casa del mes
       const manualCasa = safeTxs
         .filter(tx => !!tx.es_gasto_casa)
         .map(tx => {
@@ -193,7 +192,7 @@ export default function DesgloseCardModal({
 
       list = [...manualCasa, ...autos];
     } else if (currentType === 'personal') {
-      // Movimientos personales
+      // Movimientos personales del mes
       list = safeTxs
         .filter(tx => !tx.es_gasto_casa)
         .map(tx => ({
@@ -291,23 +290,23 @@ export default function DesgloseCardModal({
         {currentType === 'saldo' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
             <div style={{ backgroundColor: '#1E2536', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#9DA8BA', textTransform: 'uppercase', fontWeight: 600 }}>Punto de Partida en Cuenta</div>
+              <div style={{ fontSize: '0.72rem', color: '#9DA8BA', textTransform: 'uppercase', fontWeight: 600 }}>Saldo al Inicio del Mes</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#FFF', marginTop: '2px' }}>{formatARS(saldoBasePartida)}</div>
             </div>
             <div style={{ backgroundColor: 'rgba(46, 204, 113, 0.1)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(46, 204, 113, 0.3)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#2ecc71', textTransform: 'uppercase', fontWeight: 600 }}>(+) Ingresos Totales</div>
+              <div style={{ fontSize: '0.72rem', color: '#2ecc71', textTransform: 'uppercase', fontWeight: 600 }}>(+) Total Ingresos Mes</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#2ecc71', marginTop: '2px' }}>
-                +{formatARS(totalIngresosCasaAcumulado !== undefined ? (totalIngresosCasaAcumulado + totalIngresosPersonalAcumulado) : ((totalIngresosCasa || 0) + (totalIngresosPersonal || 0)))}
+                +{formatARS((totalIngresosCasa || 0) + (totalIngresosPersonal || 0))}
               </div>
             </div>
             <div style={{ backgroundColor: 'rgba(231, 76, 60, 0.1)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(231, 76, 60, 0.3)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#e74c3c', textTransform: 'uppercase', fontWeight: 600 }}>(-) Egresos Reales Totales</div>
+              <div style={{ fontSize: '0.72rem', color: '#e74c3c', textTransform: 'uppercase', fontWeight: 600 }}>(-) Total Egresos Mes</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#e74c3c', marginTop: '2px' }}>
-                -{formatARS(totalGastosCasaRealAcumulado !== undefined ? (totalGastosCasaRealAcumulado + totalGastosPersonalAcumulado) : ((totalGastadoCasa || 0) + (totalGastadoPersonal || 0)))}
+                -{formatARS((totalGastadoCasaReal || totalGastadoCasa || 0) + (totalGastadoPersonal || 0))}
               </div>
             </div>
             <div style={{ backgroundColor: 'rgba(229, 192, 123, 0.12)', padding: '14px', borderRadius: '10px', border: '1px solid #E5C07B' }}>
-              <div style={{ fontSize: '0.72rem', color: '#E5C07B', textTransform: 'uppercase', fontWeight: 700 }}>(=) Saldo Actual Real</div>
+              <div style={{ fontSize: '0.72rem', color: '#E5C07B', textTransform: 'uppercase', fontWeight: 700 }}>(=) Saldo Actual</div>
               <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#E5C07B', marginTop: '2px' }}>{formatARS(saldoActualTotal)}</div>
             </div>
           </div>
@@ -335,19 +334,19 @@ export default function DesgloseCardModal({
         {currentType === 'casa' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
             <div style={{ backgroundColor: '#1E2536', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#9DA8BA', textTransform: 'uppercase', fontWeight: 600 }}>Fondo Inicial Casa</div>
+              <div style={{ fontSize: '0.72rem', color: '#9DA8BA', textTransform: 'uppercase', fontWeight: 600 }}>Fondo al Inicio del Mes</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#FFF', marginTop: '2px' }}>{formatARS(casaBasePartida)}</div>
             </div>
             <div style={{ backgroundColor: 'rgba(46, 204, 113, 0.1)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(46, 204, 113, 0.3)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#2ecc71', textTransform: 'uppercase', fontWeight: 600 }}>(+) Aportes Totales a Casa</div>
+              <div style={{ fontSize: '0.72rem', color: '#2ecc71', textTransform: 'uppercase', fontWeight: 600 }}>(+) Aportes del Mes</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#2ecc71', marginTop: '2px' }}>
-                +{formatARS(totalIngresosCasaAcumulado !== undefined ? totalIngresosCasaAcumulado : totalIngresosCasa)}
+                +{formatARS(totalIngresosCasa || 0)}
               </div>
             </div>
             <div style={{ backgroundColor: 'rgba(231, 76, 60, 0.1)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(231, 76, 60, 0.3)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#e74c3c', textTransform: 'uppercase', fontWeight: 600 }}>(-) Gastos Casa Totales</div>
+              <div style={{ fontSize: '0.72rem', color: '#e74c3c', textTransform: 'uppercase', fontWeight: 600 }}>(-) Gastos Casa del Mes</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#e74c3c', marginTop: '2px' }}>
-                -{formatARS(totalGastosCasaRealAcumulado !== undefined ? totalGastosCasaRealAcumulado : totalGastadoCasa)}
+                -{formatARS(totalGastadoCasaReal || totalGastadoCasa || 0)}
               </div>
             </div>
             <div style={{ backgroundColor: 'rgba(97, 175, 239, 0.12)', padding: '14px', borderRadius: '10px', border: '1px solid #61AFEF' }}>
@@ -360,19 +359,19 @@ export default function DesgloseCardModal({
         {currentType === 'personal' && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px' }}>
             <div style={{ backgroundColor: '#1E2536', padding: '14px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#9DA8BA', textTransform: 'uppercase', fontWeight: 600 }}>Fondo Inicial Personal</div>
+              <div style={{ fontSize: '0.72rem', color: '#9DA8BA', textTransform: 'uppercase', fontWeight: 600 }}>Fondo Personal Inicial</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#FFF', marginTop: '2px' }}>{formatARS(dineroPersonalInicial)}</div>
             </div>
             <div style={{ backgroundColor: 'rgba(46, 204, 113, 0.1)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(46, 204, 113, 0.3)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#2ecc71', textTransform: 'uppercase', fontWeight: 600 }}>(+) Mis Comisiones / Ingresos</div>
+              <div style={{ fontSize: '0.72rem', color: '#2ecc71', textTransform: 'uppercase', fontWeight: 600 }}>(+) Mis Ingresos del Mes</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#2ecc71', marginTop: '2px' }}>
-                +{formatARS(totalIngresosPersonalAcumulado !== undefined ? totalIngresosPersonalAcumulado : totalIngresosPersonal)}
+                +{formatARS(totalIngresosPersonal || 0)}
               </div>
             </div>
             <div style={{ backgroundColor: 'rgba(231, 76, 60, 0.1)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(231, 76, 60, 0.3)' }}>
-              <div style={{ fontSize: '0.72rem', color: '#e74c3c', textTransform: 'uppercase', fontWeight: 600 }}>(-) Mis Gastos Personales</div>
+              <div style={{ fontSize: '0.72rem', color: '#e74c3c', textTransform: 'uppercase', fontWeight: 600 }}>(-) Mis Gastos del Mes</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#e74c3c', marginTop: '2px' }}>
-                -{formatARS(totalGastosPersonalAcumulado !== undefined ? totalGastosPersonalAcumulado : totalGastadoPersonal)}
+                -{formatARS(totalGastadoPersonal || 0)}
               </div>
             </div>
             <div style={{ backgroundColor: 'rgba(152, 195, 121, 0.12)', padding: '14px', borderRadius: '10px', border: '1px solid #98C379' }}>

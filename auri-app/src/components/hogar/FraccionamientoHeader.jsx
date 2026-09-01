@@ -9,22 +9,21 @@ import TransferenciaGastoHogarModal from './TransferenciaGastoHogarModal';
 export default function FraccionamientoHeader({ 
   settings, 
   saldoInicioMes,
+  saldoCasaInicioMes,
+  saldoPersonalInicioMes,
   saldoActualTotal: propSaldoActualTotal,
   fondoCasaDisponible: propFondoCasaDisponible,
   fondoPersonalDisponible: propFondoPersonalDisponible,
   basePartidaSaldo,
   basePartidaCasa,
   basePartidaPersonal,
-  totalIngresosCasaAcumulado = 0,
-  totalGastosCasaRealAcumulado = 0,
-  totalIngresosPersonalAcumulado = 0,
-  totalGastosPersonalAcumulado = 0,
   onUpdateSettings, 
   onOpenCalculator,
   onAddFunds,
   accounts = [],
   totalPresupuestadoCasa = 0,
   totalGastadoCasa = 0,
+  totalGastadoCasaReal = 0,
   totalGastadoCasaPresupuesto = 0,
   totalDebitoAutomaticoActivo = 0,
   totalGastadoPersonal = 0,
@@ -63,22 +62,22 @@ export default function FraccionamientoHeader({
     }
   }, [settings]);
 
-  // --- CÁLCULOS MATEMÁTICOS CONTINUOS Y EXACTOS ---
-  const saldoBasePartida = basePartidaSaldo !== undefined ? basePartidaSaldo : saldoManual;
-  const casaBasePartida = basePartidaCasa !== undefined ? basePartidaCasa : montoDestinadoCasa;
-  const dineroPersonalInicial = basePartidaPersonal !== undefined ? basePartidaPersonal : Math.max(0, saldoBasePartida - casaBasePartida);
-
-  const saldoActualTotal = propSaldoActualTotal !== undefined 
-    ? propSaldoActualTotal 
-    : Math.max(0, saldoBasePartida + (totalIngresosCasa || 0) + (totalIngresosPersonal || 0) - (totalGastadoCasa || 0) - (totalGastadoPersonal || 0));
+  // --- CÁLCULOS MATEMÁTICOS DEL MES ---
+  const saldoBasePartida = (saldoInicioMes !== undefined && saldoInicioMes !== null) ? saldoInicioMes : (basePartidaSaldo || saldoManual);
+  const casaBasePartida = (saldoCasaInicioMes !== undefined && saldoCasaInicioMes !== null) ? saldoCasaInicioMes : (basePartidaCasa || montoDestinadoCasa);
+  const dineroPersonalInicial = (saldoPersonalInicioMes !== undefined && saldoPersonalInicioMes !== null) ? saldoPersonalInicioMes : (basePartidaPersonal || Math.max(0, saldoBasePartida - casaBasePartida));
 
   const fondoCasaDisponible = propFondoCasaDisponible !== undefined 
     ? propFondoCasaDisponible 
-    : Math.max(0, Number(casaBasePartida) + (totalIngresosCasa || 0) - totalGastadoCasa);
+    : Math.max(0, casaBasePartida + (totalIngresosCasa || 0) - (totalGastadoCasaReal || totalGastadoCasa || 0));
 
   const fondoPersonalDisponible = propFondoPersonalDisponible !== undefined 
     ? propFondoPersonalDisponible 
-    : Math.max(0, dineroPersonalInicial + (totalIngresosPersonal || 0) - totalGastadoPersonal);
+    : Math.max(0, dineroPersonalInicial + (totalIngresosPersonal || 0) - (totalGastadoPersonal || 0));
+
+  const saldoActualTotal = propSaldoActualTotal !== undefined 
+    ? propSaldoActualTotal 
+    : (fondoCasaDisponible + fondoPersonalDisponible);
 
   // El presupuesto previsto mensual evalúa exclusivamente el gasto de la casa en el mes
   const totalConsumidoPresupuesto = totalGastadoCasaPresupuesto || totalGastadoCasa;
@@ -130,11 +129,11 @@ export default function FraccionamientoHeader({
     return clean;
   };
 
-  // --- MOVIMIENTOS RECIENTES PARA HOVER (ÚLTIMOS 3 ORDENADOS POR FECHA) ---
+  // --- MOVIMIENTOS RECIENTES PARA HOVER (ÚLTIMOS 3 ORDENADOS POR FECHA DEL MES) ---
   const recentSource = useMemo(() => {
-    const list = (allTransactions && allTransactions.length > 0) ? [...allTransactions] : [...(monthTransactions || [])];
+    const list = [...(monthTransactions || [])];
     return list.sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
-  }, [allTransactions, monthTransactions]);
+  }, [monthTransactions]);
 
   // 1. Saldo Global (Todo lo que entra y sale)
   const saldoIngresos = useMemo(() => {
@@ -353,19 +352,19 @@ export default function FraccionamientoHeader({
               <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: 'var(--color-gold)', fontWeight: 700 }}>DESGLOSE DE SALDO EN CUENTA</h4>
               <div style={{ fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: '3px', borderBottom: '1px solid var(--color-border)', paddingBottom: '8px', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Punto de Partida en Cuenta:</span>
+                  <span>Saldo al Inicio del Mes:</span>
                   <span>{formatARS(saldoBasePartida)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
-                  <span>(+) Ingresos Totales:</span>
-                  <span>+{formatARS(totalIngresosCasaAcumulado + totalIngresosPersonalAcumulado)}</span>
+                  <span>(+) Ingresos del Mes:</span>
+                  <span>+{formatARS(totalIngresosCasa + totalIngresosPersonal)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e74c3c' }}>
-                  <span>(-) Egresos Reales Totales:</span>
-                  <span>-{formatARS(totalGastosCasaRealAcumulado + totalGastosPersonalAcumulado)}</span>
+                  <span>(-) Egresos del Mes:</span>
+                  <span>-{formatARS((totalGastadoCasaReal || totalGastadoCasa) + totalGastadoPersonal)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--color-gold)', marginTop: '2px' }}>
-                  <span>(=) Saldo Real Actual:</span>
+                  <span>(=) Saldo Actual:</span>
                   <span>{formatARS(saldoActualTotal)}</span>
                 </div>
               </div>
@@ -554,19 +553,19 @@ export default function FraccionamientoHeader({
               <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#61AFEF', fontWeight: 700 }}>FONDO DE LA CASA</h4>
               <div style={{ fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: '3px', borderBottom: '1px solid var(--color-border)', paddingBottom: '8px', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Fondo Inicial Casa:</span>
+                  <span>Fondo al Inicio del Mes:</span>
                   <span>{formatARS(casaBasePartida)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
-                  <span>(+) Aportes a Casa Totales:</span>
-                  <span>+{formatARS(totalIngresosCasaAcumulado)}</span>
+                  <span>(+) Aportes a Casa del Mes:</span>
+                  <span>+{formatARS(totalIngresosCasa)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e74c3c' }}>
-                  <span>(-) Gastos Casa Totales:</span>
-                  <span>-{formatARS(totalGastosCasaRealAcumulado)}</span>
+                  <span>(-) Gastos Casa del Mes:</span>
+                  <span>-{formatARS(totalGastadoCasaReal || totalGastadoCasa)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#61AFEF', marginTop: '2px' }}>
-                  <span>(=) Remanente Casa:</span>
+                  <span>(=) Fondo Casa Disponible:</span>
                   <span>{formatARS(fondoCasaDisponible)}</span>
                 </div>
               </div>
@@ -575,7 +574,7 @@ export default function FraccionamientoHeader({
               <div style={{ marginBottom: '8px' }}>
                 <div style={{ fontSize: '0.72rem', color: '#2ecc71', fontWeight: 700, marginBottom: '4px' }}>ÚLTIMOS 3 INGRESOS A CASA:</div>
                 {casaIngresos.length === 0 ? (
-                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Sin aportes adicionales</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Sin aportes adicionales este mes</div>
                 ) : (
                   casaIngresos.map((tx, idx) => (
                     <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#2ecc71' }}>
@@ -590,7 +589,7 @@ export default function FraccionamientoHeader({
               <div>
                 <div style={{ fontSize: '0.72rem', color: '#e74c3c', fontWeight: 700, marginBottom: '4px' }}>ÚLTIMOS 3 GASTOS CASA:</div>
                 {casaEgresos.length === 0 ? (
-                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Sin gastos registrados</div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--color-text-muted)' }}>Sin gastos registrados este mes</div>
                 ) : (
                   casaEgresos.map((tx, idx) => (
                     <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#e74c3c' }}>
@@ -653,12 +652,12 @@ export default function FraccionamientoHeader({
                   <span>{formatARS(dineroPersonalInicial)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
-                  <span>(+) Mis Ingresos / Comisiones:</span>
-                  <span>+{formatARS(totalIngresosPersonalAcumulado)}</span>
+                  <span>(+) Mis Ingresos del Mes:</span>
+                  <span>+{formatARS(totalIngresosPersonal)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e74c3c' }}>
-                  <span>(-) Mis Gastos Personales:</span>
-                  <span>-{formatARS(totalGastosPersonalAcumulado)}</span>
+                  <span>(-) Mis Gastos del Mes:</span>
+                  <span>-{formatARS(totalGastadoPersonal)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#98C379', marginTop: '2px' }}>
                   <span>(=) Dinero Mío Disponible:</span>
@@ -1040,20 +1039,19 @@ export default function FraccionamientoHeader({
           cardType={selectedModalCard}
           settings={settings}
           saldoManual={saldoBasePartida}
-          saldoInicioMes={saldoInicioMes}
+          saldoInicioMes={saldoBasePartida}
+          saldoCasaInicioMes={casaBasePartida}
+          saldoPersonalInicioMes={dineroPersonalInicial}
           saldoActualTotal={saldoActualTotal}
           fondoCasaDisponible={fondoCasaDisponible}
           fondoPersonalDisponible={fondoPersonalDisponible}
           basePartidaCasa={casaBasePartida}
           basePartidaPersonal={dineroPersonalInicial}
-          totalIngresosCasaAcumulado={totalIngresosCasaAcumulado}
-          totalGastosCasaRealAcumulado={totalGastosCasaRealAcumulado}
-          totalIngresosPersonalAcumulado={totalIngresosPersonalAcumulado}
-          totalGastosPersonalAcumulado={totalGastosPersonalAcumulado}
           presupuestoPrevisto={presupuestoPrevisto}
           montoDestinadoCasa={casaBasePartida}
           totalPresupuestadoCasa={totalPresupuestadoCasa}
           totalGastadoCasa={totalGastadoCasa}
+          totalGastadoCasaReal={totalGastadoCasaReal}
           totalDebitoAutomaticoActivo={totalDebitoAutomaticoActivo}
           totalGastadoPersonal={totalGastadoPersonal}
           totalIngresosCasa={totalIngresosCasa}

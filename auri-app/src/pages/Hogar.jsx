@@ -214,13 +214,19 @@ export default function Hogar() {
     return isHouseTransaction(tx, user?.id);
   }, [user?.id]);
 
+  // Helper para identificar aportes base iniciales del mes que ya forman parte de la configuración
+  const isAporteMensualBase = useCallback((tx) => {
+    const desc = (tx.descripcion || '').toLowerCase().trim();
+    return desc.includes('aporte mensual casa') || desc.includes('aporte inicial casa');
+  }, []);
+
   // Saldo exacto al inicio del mes seleccionado (acumula transacciones previas al 01 del mes)
   const acumuladoPrevioMes = useMemo(() => {
     if (!allTransactions) {
       return {
         saldoCasa: basePartidaCasa,
-        saldoPersonal: basePartidaPersonal,
-        saldoCuenta: basePartidaSaldo
+        saldoPersonal: basePartidaPersonal + ajusteIngresoPersonal,
+        saldoCuenta: basePartidaSaldo + ajusteIngresoPersonal
       };
     }
 
@@ -234,21 +240,38 @@ export default function Hogar() {
       if (txFecha >= hogarBaselineDate && txFecha < firstDayOfMonth) {
         const isCasa = isHouseTx(tx);
         if (tx.tipo === 'ingreso') {
-          if (isCasa) ingresosCasa += Number(tx.monto || 0);
-          else ingresosPersonal += Number(tx.monto || 0);
+          if (isCasa) {
+            if (!isAporteMensualBase(tx)) {
+              ingresosCasa += Number(tx.monto || 0);
+            }
+          } else {
+            ingresosPersonal += Number(tx.monto || 0);
+          }
         } else if (tx.tipo === 'egreso') {
-          if (isCasa) egresosCasa += Number(tx.monto || 0);
-          else egresosPersonal += Number(tx.monto || 0);
+          if (isCasa) {
+            const desc = (tx.descripcion || '').toLowerCase();
+            const esRepuesto = desc.includes('repuestos');
+            if (!esRepuesto) {
+              egresosCasa += Number(tx.monto || 0);
+            }
+          } else {
+            egresosPersonal += Number(tx.monto || 0);
+          }
         }
       }
     });
 
+    const ingPersTotal = ingresosPersonal + ajusteIngresoPersonal;
+    const saldoCasa = Math.max(0, basePartidaCasa + ingresosCasa - egresosCasa);
+    const saldoPersonal = Math.max(0, basePartidaPersonal + ingPersTotal - egresosPersonal);
+    const saldoCuenta = saldoCasa + saldoPersonal;
+
     return {
-      saldoCasa: basePartidaCasa + ingresosCasa - egresosCasa,
-      saldoPersonal: basePartidaPersonal + ingresosPersonal - egresosPersonal,
-      saldoCuenta: basePartidaSaldo + (ingresosCasa + ingresosPersonal) - (egresosCasa + egresosPersonal)
+      saldoCasa,
+      saldoPersonal,
+      saldoCuenta
     };
-  }, [allTransactions, basePartidaCasa, basePartidaPersonal, basePartidaSaldo, firstDayOfMonth, isHouseTx]);
+  }, [allTransactions, basePartidaCasa, basePartidaPersonal, basePartidaSaldo, ajusteIngresoPersonal, firstDayOfMonth, isHouseTx, isAporteMensualBase]);
 
   const saldoInicioMes = acumuladoPrevioMes.saldoCuenta;
 
@@ -256,9 +279,9 @@ export default function Hogar() {
   const totalIngresosCasaMes = useMemo(() => {
     if (!monthTransactions) return 0;
     return monthTransactions
-      .filter(tx => tx.tipo === 'ingreso' && isHouseTx(tx))
+      .filter(tx => tx.tipo === 'ingreso' && isHouseTx(tx) && !isAporteMensualBase(tx))
       .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
-  }, [monthTransactions, isHouseTx]);
+  }, [monthTransactions, isHouseTx, isAporteMensualBase]);
 
   const totalIngresosPersonalMes = useMemo(() => {
     if (!monthTransactions) return 0;
@@ -369,56 +392,11 @@ export default function Hogar() {
     return buckets.reduce((acc, b) => acc + Number(b.monto_presupuestado || 0), 0);
   }, [buckets]);
 
-  // 3. Totales Históricos Acumulados (Seguimiento Continuo sin reseteo al cambiar de mes)
-  const acumuladoHistorico = useMemo(() => {
-    if (!allTransactions) {
-      return {
-        ingresosCasaTotal: 0,
-        gastosCasaTotal: 0,
-        ingresosPersonalTotal: ajusteIngresoPersonal,
-        gastosPersonalTotal: 0,
-        fondoCasaDisponible: basePartidaCasa,
-        fondoPersonalDisponible: basePartidaPersonal + ajusteIngresoPersonal,
-        saldoActualTotal: basePartidaSaldo + ajusteIngresoPersonal
-      };
-    }
+  // Fondos disponibles en el mes seleccionado
+  const fondoCasaDisponible = Math.max(0, acumuladoPrevioMes.saldoCasa + totalIngresosCasaMes - totalGastadoCasaRealMes);
+  const fondoPersonalDisponible = Math.max(0, acumuladoPrevioMes.saldoPersonal + totalIngresosPersonalMes - totalGastadoPersonalMes);
+  const saldoActualTotal = fondoCasaDisponible + fondoPersonalDisponible;
 
-    let ingCasa = 0;
-    let gasCasa = 0;
-    let ingPers = 0;
-    let gasPers = 0;
-
-    allTransactions.forEach(tx => {
-      const txFecha = tx.fecha ? String(tx.fecha).slice(0, 10) : '';
-      if (txFecha >= hogarBaselineDate) {
-        const isCasa = isHouseTx(tx);
-        if (tx.tipo === 'ingreso') {
-          if (isCasa) ingCasa += Number(tx.monto || 0);
-          else ingPers += Number(tx.monto || 0);
-        } else if (tx.tipo === 'egreso') {
-          if (isCasa) gasCasa += Number(tx.monto || 0);
-          else gasPers += Number(tx.monto || 0);
-        }
-      }
-    });
-
-    const ingPersTotal = ingPers + ajusteIngresoPersonal;
-    const fondoCasa = Math.max(0, basePartidaCasa + ingCasa - gasCasa);
-    const fondoPersonal = Math.max(0, basePartidaPersonal + ingPersTotal - gasPers);
-    const saldoCuenta = Math.max(0, basePartidaSaldo + (ingCasa + ingPersTotal) - (gasCasa + gasPers));
-
-    return {
-      ingresosCasaTotal: ingCasa,
-      gastosCasaTotal: gasCasa,
-      ingresosPersonalTotal: ingPersTotal,
-      gastosPersonalTotal: gasPers,
-      fondoCasaDisponible: fondoCasa,
-      fondoPersonalDisponible: fondoPersonal,
-      saldoActualTotal: saldoCuenta
-    };
-  }, [allTransactions, basePartidaCasa, basePartidaPersonal, basePartidaSaldo, ajusteIngresoPersonal, isHouseTx]);
-
-  const saldoActualTotal = acumuladoHistorico.saldoActualTotal;
   const saldoBaseCasa = acumuladoPrevioMes.saldoCasa;
   const saldoBaseCuenta = acumuladoPrevioMes.saldoCuenta;
 
@@ -1070,22 +1048,21 @@ export default function Hogar() {
           <FraccionamientoHeader
             settings={settings}
             saldoInicioMes={saldoInicioMes}
-            saldoActualTotal={acumuladoHistorico.saldoActualTotal}
-            fondoCasaDisponible={acumuladoHistorico.fondoCasaDisponible}
-            fondoPersonalDisponible={acumuladoHistorico.fondoPersonalDisponible}
+            saldoCasaInicioMes={acumuladoPrevioMes.saldoCasa}
+            saldoPersonalInicioMes={acumuladoPrevioMes.saldoPersonal}
+            saldoActualTotal={saldoActualTotal}
+            fondoCasaDisponible={fondoCasaDisponible}
+            fondoPersonalDisponible={fondoPersonalDisponible}
             basePartidaSaldo={basePartidaSaldo}
             basePartidaCasa={basePartidaCasa}
             basePartidaPersonal={basePartidaPersonal}
-            totalIngresosCasaAcumulado={acumuladoHistorico.ingresosCasaTotal}
-            totalGastosCasaRealAcumulado={acumuladoHistorico.gastosCasaTotal}
-            totalIngresosPersonalAcumulado={acumuladoHistorico.ingresosPersonalTotal}
-            totalGastosPersonalAcumulado={acumuladoHistorico.gastosPersonalTotal}
             onUpdateSettings={handleUpdateSettings}
             onAddFunds={handleAddFunds}
             accounts={accounts}
             onOpenCalculator={() => setIsCalculatorOpen(true)}
             totalPresupuestadoCasa={totalPresupuestadoCasa}
             totalGastadoCasa={totalGastadoCasaPresupuesto}
+            totalGastadoCasaReal={totalGastadoCasaRealMes}
             totalGastadoCasaPresupuesto={totalGastadoCasaPresupuesto}
             totalDebitoAutomaticoActivo={totalDebitoAutomaticoActivo}
             totalGastadoPersonal={totalGastadoPersonal}
