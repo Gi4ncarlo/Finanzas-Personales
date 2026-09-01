@@ -316,6 +316,59 @@ export default function Hogar() {
   const totalIngresosCasa = totalIngresosCasaMes;
   const totalIngresosPersonal = totalIngresosPersonalMes;
 
+  // Desglose por sobre del hogar
+  const spendingPerBucket = useMemo(() => {
+    if (!buckets) return {};
+
+    const map = {};
+    buckets.forEach(b => { 
+      map[b.id] = autoExpensesByBucket[b.id] || 0; 
+    });
+
+    const localMappingKey = `auri_local_tx_household_mapping_${user?.id}`;
+    const localMapping = JSON.parse(localStorage.getItem(localMappingKey) || '{}');
+
+    if (monthTransactions) {
+      monthTransactions.forEach(tx => {
+        if (tx.tipo === 'egreso' && isHouseTransaction(tx, user?.id)) {
+          const hBucketId = tx.household_bucket_id || 
+            localMapping[tx.id]?.household_bucket_id || 
+            localMapping['desc_' + tx.descripcion?.trim()]?.household_bucket_id;
+
+          if (hBucketId && map[hBucketId] !== undefined) {
+            map[hBucketId] += Number(tx.monto || 0);
+          } else if (tx.category_id) {
+            const matchingBucket = buckets.find(b => b.categoria_id === tx.category_id);
+            if (matchingBucket) {
+              map[matchingBucket.id] += Number(tx.monto || 0);
+            }
+          }
+        }
+      });
+    }
+
+    services.forEach(s => {
+      const isPaid = !!paidServices[s.id];
+      if (isPaid) {
+        const hasRealTx = monthTransactions?.some(tx => 
+          tx.tipo === 'egreso' && 
+          (tx.descripcion?.toLowerCase().includes(`pago: ${s.nombre}`.toLowerCase()) || 
+           tx.descripcion?.toLowerCase().includes(s.nombre.toLowerCase()))
+        );
+        
+        if (!hasRealTx && map[s.bucket_id] !== undefined) {
+          map[s.bucket_id] += Number(s.monto_estimado || 0);
+        }
+      }
+    });
+
+    return map;
+  }, [monthTransactions, buckets, autoExpensesByBucket, services, paidServices, user]);
+
+  const totalPresupuestadoCasa = useMemo(() => {
+    return buckets.reduce((acc, b) => acc + Number(b.monto_presupuestado || 0), 0);
+  }, [buckets]);
+
   // 3. Totales Históricos Acumulados (Seguimiento Continuo sin reseteo al cambiar de mes)
   const acumuladoHistorico = useMemo(() => {
     if (!allTransactions) {
