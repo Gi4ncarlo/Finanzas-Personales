@@ -132,12 +132,16 @@ export default function Hogar() {
   const { data: monthTransactions, mutate: mutateTx } = useSWR(
     user ? ['transactions_household', user.id, selectedMonth] : null,
     async () => {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      const lastDay = new Date(year, month, 0).getDate();
+      const lastDayOfMonth = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+
       const { data, error } = await supabase
         .from('transactions')
         .select('*')
         .eq('user_id', user.id)
         .gte('fecha', firstDayOfMonth)
-        .lte('fecha', `${selectedMonth}-31T23:59:59`); // Estimado simple fin de mes
+        .lte('fecha', lastDayOfMonth);
 
       if (error) throw error;
       return data || [];
