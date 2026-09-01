@@ -396,8 +396,8 @@ export default function Hogar() {
     return buckets.reduce((acc, b) => acc + Number(b.monto_presupuestado || 0), 0);
   }, [buckets]);
 
-  // Fondos disponibles en el mes seleccionado
-  const fondoCasaDisponible = Math.max(0, acumuladoPrevioMes.saldoCasa + totalIngresosCasaMes - totalGastadoCasaRealMes);
+  // Fondos disponibles en el mes seleccionado (incluye servicios y débitos marcados como pagados)
+  const fondoCasaDisponible = Math.max(0, acumuladoPrevioMes.saldoCasa + totalIngresosCasaMes - totalGastadoCasa);
   const fondoPersonalDisponible = Math.max(0, acumuladoPrevioMes.saldoPersonal + totalIngresosPersonalMes - totalGastadoPersonalMes);
   const saldoActualTotal = fondoCasaDisponible + fondoPersonalDisponible;
 
