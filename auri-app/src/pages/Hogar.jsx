@@ -166,24 +166,30 @@ export default function Hogar() {
     return accounts.reduce((sum, acc) => sum + Number(acc.saldo_inicial || 0), 0);
   }, [accounts]);
 
-  // Saldo exacto al inicio del mes seleccionado (01 del mes)
-  const saldoInicioMes = useMemo(() => {
+  // 1. Valores de Punto de Partida Manual (Baseline)
+  const basePartidaSaldo = useMemo(() => {
     if (settings?.saldo_manual !== undefined && settings?.saldo_manual !== null) {
       return Number(settings.saldo_manual);
     }
-    const basePartida = totalCuentasSaldoInicial > 0 ? totalCuentasSaldoInicial : 17285000;
-    if (!allTransactions) return basePartida;
+    return totalCuentasSaldoInicial > 0 ? totalCuentasSaldoInicial : 17285000;
+  }, [settings?.saldo_manual, totalCuentasSaldoInicial]);
 
-    let acumulado = basePartida;
-    allTransactions.forEach(tx => {
-      const txFecha = tx.fecha ? String(tx.fecha).slice(0, 10) : '';
-      if (txFecha && txFecha < firstDayOfMonth) {
-        if (tx.tipo === 'ingreso') acumulado += Number(tx.monto || 0);
-        else if (tx.tipo === 'egreso') acumulado -= Number(tx.monto || 0);
-      }
-    });
-    return acumulado;
-  }, [settings?.saldo_manual, totalCuentasSaldoInicial, allTransactions, firstDayOfMonth]);
+  const basePartidaCasa = useMemo(() => {
+    if (settings?.monto_destinado_casa !== undefined && settings?.monto_destinado_casa !== null) {
+      return Number(settings.monto_destinado_casa);
+    }
+    return 8285000;
+  }, [settings?.monto_destinado_casa]);
+
+  const basePartidaPersonal = useMemo(() => {
+    return Math.max(0, basePartidaSaldo - basePartidaCasa);
+  }, [basePartidaSaldo, basePartidaCasa]);
+
+  const ajusteIngresoPersonal = useMemo(() => {
+    return Number(settings?.ajuste_ingreso_personal || 0);
+  }, [settings?.ajuste_ingreso_personal]);
+
+  const hogarBaselineDate = '2026-08-01';
 
   // Suma total de Gastos Automáticos activos
   const totalDebitoAutomaticoActivo = useMemo(() => {
@@ -208,37 +214,78 @@ export default function Hogar() {
     return isHouseTransaction(tx, user?.id);
   }, [user?.id]);
 
-  // Total Ingresos del Mes asignados a Casa
-  const totalIngresosCasa = useMemo(() => {
+  // Saldo exacto al inicio del mes seleccionado (acumula transacciones previas al 01 del mes)
+  const acumuladoPrevioMes = useMemo(() => {
+    if (!allTransactions) {
+      return {
+        saldoCasa: basePartidaCasa,
+        saldoPersonal: basePartidaPersonal,
+        saldoCuenta: basePartidaSaldo
+      };
+    }
+
+    let ingresosCasa = 0;
+    let egresosCasa = 0;
+    let ingresosPersonal = 0;
+    let egresosPersonal = 0;
+
+    allTransactions.forEach(tx => {
+      const txFecha = tx.fecha ? String(tx.fecha).slice(0, 10) : '';
+      if (txFecha >= hogarBaselineDate && txFecha < firstDayOfMonth) {
+        const isCasa = isHouseTx(tx);
+        if (tx.tipo === 'ingreso') {
+          if (isCasa) ingresosCasa += Number(tx.monto || 0);
+          else ingresosPersonal += Number(tx.monto || 0);
+        } else if (tx.tipo === 'egreso') {
+          if (isCasa) egresosCasa += Number(tx.monto || 0);
+          else egresosPersonal += Number(tx.monto || 0);
+        }
+      }
+    });
+
+    return {
+      saldoCasa: basePartidaCasa + ingresosCasa - egresosCasa,
+      saldoPersonal: basePartidaPersonal + ingresosPersonal - egresosPersonal,
+      saldoCuenta: basePartidaSaldo + (ingresosCasa + ingresosPersonal) - (egresosCasa + egresosPersonal)
+    };
+  }, [allTransactions, basePartidaCasa, basePartidaPersonal, basePartidaSaldo, firstDayOfMonth, isHouseTx]);
+
+  const saldoInicioMes = acumuladoPrevioMes.saldoCuenta;
+
+  // 2. Totales del Mes Seleccionado
+  const totalIngresosCasaMes = useMemo(() => {
     if (!monthTransactions) return 0;
     return monthTransactions
       .filter(tx => tx.tipo === 'ingreso' && isHouseTx(tx))
       .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
   }, [monthTransactions, isHouseTx]);
 
-  // Total Ingresos del Mes Personales (Comisiones propias + ajuste de conciliación temporal)
-  const totalIngresosPersonal = useMemo(() => {
+  const totalIngresosPersonalMes = useMemo(() => {
     if (!monthTransactions) return 0;
-    const txSum = monthTransactions
+    return monthTransactions
       .filter(tx => tx.tipo === 'ingreso' && !isHouseTx(tx))
       .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
-    const ajuste = Number(settings?.ajuste_ingreso_personal || 0);
-    return txSum + ajuste;
-  }, [monthTransactions, isHouseTx, settings]);
+  }, [monthTransactions, isHouseTx]);
 
-  // 1. Gasto Mensual Real de la Casa que ya impactó en la cuenta bancaria (Transacciones reales)
-  const totalGastadoCasaReal = useMemo(() => {
+  const totalGastadoCasaRealMes = useMemo(() => {
     if (!monthTransactions) return 0;
     return monthTransactions
       .filter(tx => tx.tipo === 'egreso' && isHouseTx(tx))
       .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
   }, [monthTransactions, isHouseTx]);
 
-  // 2. Gasto Mensual Total de la Casa para Presupuesto (Real + Débitos + Servicios checklist)
+  const totalGastadoPersonalMes = useMemo(() => {
+    if (!monthTransactions) return 0;
+    return monthTransactions
+      .filter(tx => tx.tipo === 'egreso' && !isHouseTx(tx))
+      .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
+  }, [monthTransactions, isHouseTx]);
+
+  // Gasto Mensual Total de la Casa para Presupuesto (Real + Débitos + Servicios checklist)
   const totalGastadoCasaPresupuesto = useMemo(() => {
     if (!user) return 0;
 
-    let manualSum = totalGastadoCasaReal;
+    let manualSum = totalGastadoCasaRealMes;
 
     // Débitos automáticos activos
     const autoSum = autoExpenses
@@ -262,80 +309,65 @@ export default function Hogar() {
     });
 
     return manualSum + autoSum + serviceSum;
-  }, [monthTransactions, autoExpenses, services, paidServices, user, totalGastadoCasaReal]);
+  }, [monthTransactions, autoExpenses, services, paidServices, user, totalGastadoCasaRealMes]);
 
   const totalGastadoCasa = totalGastadoCasaPresupuesto;
+  const totalGastadoPersonal = totalGastadoPersonalMes;
+  const totalIngresosCasa = totalIngresosCasaMes;
+  const totalIngresosPersonal = totalIngresosPersonalMes;
 
-  // Gasto Mensual Real Personal (Excluye rigurosamente las de casa)
-  const totalGastadoPersonal = useMemo(() => {
-    if (!monthTransactions) return 0;
-
-    return monthTransactions
-      .filter(tx => tx.tipo === 'egreso' && !isHouseTx(tx))
-      .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
-  }, [monthTransactions, isHouseTx]);
-
-  // Desglose por sobre del hogar
-  const spendingPerBucket = useMemo(() => {
-    if (!buckets) return {};
-
-    const map = {};
-    buckets.forEach(b => { 
-      map[b.id] = autoExpensesByBucket[b.id] || 0; 
-    });
-
-    const localMappingKey = `auri_local_tx_household_mapping_${user?.id}`;
-    const localMapping = JSON.parse(localStorage.getItem(localMappingKey) || '{}');
-
-    if (monthTransactions) {
-      monthTransactions.forEach(tx => {
-        if (tx.tipo === 'egreso' && isHouseTransaction(tx)) {
-          const hBucketId = tx.household_bucket_id || 
-            localMapping[tx.id]?.household_bucket_id || 
-            localMapping['desc_' + tx.descripcion?.trim()]?.household_bucket_id;
-
-          if (hBucketId && map[hBucketId] !== undefined) {
-            map[hBucketId] += Number(tx.monto || 0);
-          } else if (tx.category_id) {
-            const matchingBucket = buckets.find(b => b.categoria_id === tx.category_id);
-            if (matchingBucket) {
-              map[matchingBucket.id] += Number(tx.monto || 0);
-            }
-          }
-        }
-      });
+  // 3. Totales Históricos Acumulados (Seguimiento Continuo sin reseteo al cambiar de mes)
+  const acumuladoHistorico = useMemo(() => {
+    if (!allTransactions) {
+      return {
+        ingresosCasaTotal: 0,
+        gastosCasaTotal: 0,
+        ingresosPersonalTotal: ajusteIngresoPersonal,
+        gastosPersonalTotal: 0,
+        fondoCasaDisponible: basePartidaCasa,
+        fondoPersonalDisponible: basePartidaPersonal + ajusteIngresoPersonal,
+        saldoActualTotal: basePartidaSaldo + ajusteIngresoPersonal
+      };
     }
 
-    services.forEach(s => {
-      const isPaid = !!paidServices[s.id];
-      if (isPaid) {
-        const hasRealTx = monthTransactions?.some(tx => 
-          tx.tipo === 'egreso' && 
-          (tx.descripcion?.toLowerCase().includes(`pago: ${s.nombre}`.toLowerCase()) || 
-           tx.descripcion?.toLowerCase().includes(s.nombre.toLowerCase()))
-        );
-        
-        if (!hasRealTx && map[s.bucket_id] !== undefined) {
-          map[s.bucket_id] += Number(s.monto_estimado || 0);
+    let ingCasa = 0;
+    let gasCasa = 0;
+    let ingPers = 0;
+    let gasPers = 0;
+
+    allTransactions.forEach(tx => {
+      const txFecha = tx.fecha ? String(tx.fecha).slice(0, 10) : '';
+      if (txFecha >= hogarBaselineDate) {
+        const isCasa = isHouseTx(tx);
+        if (tx.tipo === 'ingreso') {
+          if (isCasa) ingCasa += Number(tx.monto || 0);
+          else ingPers += Number(tx.monto || 0);
+        } else if (tx.tipo === 'egreso') {
+          if (isCasa) gasCasa += Number(tx.monto || 0);
+          else gasPers += Number(tx.monto || 0);
         }
       }
     });
 
-    return map;
-  }, [monthTransactions, buckets, autoExpensesByBucket, services, paidServices, user, isHouseTransaction]);
+    const ingPersTotal = ingPers + ajusteIngresoPersonal;
+    const fondoCasa = Math.max(0, basePartidaCasa + ingCasa - gasCasa);
+    const fondoPersonal = Math.max(0, basePartidaPersonal + ingPersTotal - gasPers);
+    const saldoCuenta = Math.max(0, basePartidaSaldo + (ingCasa + ingPersTotal) - (gasCasa + gasPers));
 
-  const totalPresupuestadoCasa = useMemo(() => {
-    return buckets.reduce((acc, b) => acc + Number(b.monto_presupuestado || 0), 0);
-  }, [buckets]);
+    return {
+      ingresosCasaTotal: ingCasa,
+      gastosCasaTotal: gasCasa,
+      ingresosPersonalTotal: ingPersTotal,
+      gastosPersonalTotal: gasPers,
+      fondoCasaDisponible: fondoCasa,
+      fondoPersonalDisponible: fondoPersonal,
+      saldoActualTotal: saldoCuenta
+    };
+  }, [allTransactions, basePartidaCasa, basePartidaPersonal, basePartidaSaldo, ajusteIngresoPersonal, isHouseTx]);
 
-  // Saldo base de arranque para el fondo casa y cuenta al 1er día del mes
-  const saldoBaseCasa = Number(settings?.monto_destinado_casa || 5202000);
-  const saldoBaseCuenta = Number((saldoInicioMes !== undefined && saldoInicioMes !== null) ? saldoInicioMes : (settings?.saldo_manual || 14202000));
-
-  const totalIngresosMes = (totalIngresosCasa || 0) + (totalIngresosPersonal || 0);
-  const totalEgresosMes = (totalGastadoCasaReal || 0) + (totalGastadoPersonal || 0);
-  const totalEgresosMesReal = totalEgresosMes;
-  const saldoActualTotal = Math.max(0, saldoBaseCuenta + totalIngresosMes - totalEgresosMesReal);
+  const saldoActualTotal = acumuladoHistorico.saldoActualTotal;
+  const saldoBaseCasa = acumuladoPrevioMes.saldoCasa;
+  const saldoBaseCuenta = acumuladoPrevioMes.saldoCuenta;
 
   // Lista unificada de transacciones con saldo cronológico real en cuenta y fondo casa
   const householdTransactionsList = useMemo(() => {
@@ -985,6 +1017,16 @@ export default function Hogar() {
           <FraccionamientoHeader
             settings={settings}
             saldoInicioMes={saldoInicioMes}
+            saldoActualTotal={acumuladoHistorico.saldoActualTotal}
+            fondoCasaDisponible={acumuladoHistorico.fondoCasaDisponible}
+            fondoPersonalDisponible={acumuladoHistorico.fondoPersonalDisponible}
+            basePartidaSaldo={basePartidaSaldo}
+            basePartidaCasa={basePartidaCasa}
+            basePartidaPersonal={basePartidaPersonal}
+            totalIngresosCasaAcumulado={acumuladoHistorico.ingresosCasaTotal}
+            totalGastosCasaRealAcumulado={acumuladoHistorico.gastosCasaTotal}
+            totalIngresosPersonalAcumulado={acumuladoHistorico.ingresosPersonalTotal}
+            totalGastosPersonalAcumulado={acumuladoHistorico.gastosPersonalTotal}
             onUpdateSettings={handleUpdateSettings}
             onAddFunds={handleAddFunds}
             accounts={accounts}
@@ -997,6 +1039,7 @@ export default function Hogar() {
             totalIngresosCasa={totalIngresosCasa}
             totalIngresosPersonal={totalIngresosPersonal}
             monthTransactions={monthTransactions || []}
+            allTransactions={allTransactions || []}
             buckets={buckets}
             spendingPerBucket={spendingPerBucket}
             autoExpenses={autoExpenses}

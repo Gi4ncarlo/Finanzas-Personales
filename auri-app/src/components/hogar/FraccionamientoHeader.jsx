@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { formatARS } from '../../utils/currency';
-import { Home, User, Wallet, Calculator, Settings2, ShieldCheck, Calendar, Info, PlusCircle, ArrowUpRight, ArrowDownLeft, Send } from 'lucide-react';
+import { Home, User, Wallet, Calculator, Settings2, ShieldCheck, Calendar, Info, PlusCircle, ArrowUpRight, ArrowDownLeft, Send, Pencil, Check, DollarSign } from 'lucide-react';
 import SumarFondosModal from './SumarFondosModal';
 import DesgloseCardModal from './DesgloseCardModal';
 import TermometroPresupuesto from './TermometroPresupuesto';
@@ -9,6 +9,16 @@ import TransferenciaGastoHogarModal from './TransferenciaGastoHogarModal';
 export default function FraccionamientoHeader({ 
   settings, 
   saldoInicioMes,
+  saldoActualTotal: propSaldoActualTotal,
+  fondoCasaDisponible: propFondoCasaDisponible,
+  fondoPersonalDisponible: propFondoPersonalDisponible,
+  basePartidaSaldo,
+  basePartidaCasa,
+  basePartidaPersonal,
+  totalIngresosCasaAcumulado = 0,
+  totalGastosCasaRealAcumulado = 0,
+  totalIngresosPersonalAcumulado = 0,
+  totalGastosPersonalAcumulado = 0,
   onUpdateSettings, 
   onOpenCalculator,
   onAddFunds,
@@ -21,6 +31,7 @@ export default function FraccionamientoHeader({
   totalIngresosCasa = 0,
   totalIngresosPersonal = 0,
   monthTransactions = [],
+  allTransactions = [],
   buckets = [],
   spendingPerBucket = {},
   autoExpenses = [],
@@ -28,6 +39,7 @@ export default function FraccionamientoHeader({
   paidServices = {}
 }) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isEditBudgetModalOpen, setIsEditBudgetModalOpen] = useState(false);
   const [isSumarFondosOpen, setIsSumarFondosOpen] = useState(false);
   const [isGastoCasaModalOpen, setIsGastoCasaModalOpen] = useState(false);
   const [hoveredCard, setHoveredCard] = useState(null); // 'saldo' | 'presupuesto' | 'casa' | 'personal'
@@ -36,29 +48,39 @@ export default function FraccionamientoHeader({
   // Valores manuales iniciales (Punto de Partida)
   const [saldoManual, setSaldoManual] = useState(settings?.saldo_manual || 17285000);
   const [presupuestoPrevisto, setPresupuestoPrevisto] = useState(settings?.presupuesto_previsto_manual || 3000000);
+  const [nuevoPresupuestoInput, setNuevoPresupuestoInput] = useState(settings?.presupuesto_previsto_manual || 3000000);
   const [montoDestinadoCasa, setMontoDestinadoCasa] = useState(settings?.monto_destinado_casa || 8285000);
   const [ajusteIngresoPersonal, setAjusteIngresoPersonal] = useState(settings?.ajuste_ingreso_personal || 0);
 
   useEffect(() => {
     if (settings) {
       setSaldoManual(settings.saldo_manual !== undefined ? Number(settings.saldo_manual) : 17285000);
-      setPresupuestoPrevisto(settings.presupuesto_previsto_manual !== undefined ? Number(settings.presupuesto_previsto_manual) : 3000000);
+      const prev = settings.presupuesto_previsto_manual !== undefined ? Number(settings.presupuesto_previsto_manual) : 3000000;
+      setPresupuestoPrevisto(prev);
+      setNuevoPresupuestoInput(prev);
       setMontoDestinadoCasa(settings.monto_destinado_casa !== undefined ? Number(settings.monto_destinado_casa) : 8285000);
       setAjusteIngresoPersonal(settings.ajuste_ingreso_personal !== undefined ? Number(settings.ajuste_ingreso_personal) : 0);
     }
   }, [settings]);
 
-  // --- CÁLCULOS MATEMÁTICOS SIMÉTRICOS Y EXACTOS ---
-  const baseSaldoMes = Number(settings?.saldo_manual !== undefined ? settings.saldo_manual : ((saldoInicioMes !== undefined && saldoInicioMes !== null) ? saldoInicioMes : saldoManual));
-  const totalIngresosMes = (totalIngresosCasa || 0) + (totalIngresosPersonal || 0);
-  const totalEgresosMes = (totalGastadoCasa || 0) + (totalGastadoPersonal || 0);
+  // --- CÁLCULOS MATEMÁTICOS CONTINUOS Y EXACTOS ---
+  const saldoBasePartida = basePartidaSaldo !== undefined ? basePartidaSaldo : saldoManual;
+  const casaBasePartida = basePartidaCasa !== undefined ? basePartidaCasa : montoDestinadoCasa;
+  const dineroPersonalInicial = basePartidaPersonal !== undefined ? basePartidaPersonal : Math.max(0, saldoBasePartida - casaBasePartida);
 
-  const saldoActualTotal = Math.max(0, baseSaldoMes + totalIngresosMes - totalEgresosMes);
-  const fondoCasaDisponible = Math.max(0, Number(montoDestinadoCasa) + (totalIngresosCasa || 0) - totalGastadoCasa);
-  const dineroPersonalInicial = Math.max(0, baseSaldoMes - Number(montoDestinadoCasa));
-  const fondoPersonalDisponible = Math.max(0, dineroPersonalInicial + (totalIngresosPersonal || 0) - totalGastadoPersonal);
+  const saldoActualTotal = propSaldoActualTotal !== undefined 
+    ? propSaldoActualTotal 
+    : Math.max(0, saldoBasePartida + (totalIngresosCasa || 0) + (totalIngresosPersonal || 0) - (totalGastadoCasa || 0) - (totalGastadoPersonal || 0));
 
-  // El presupuesto previsto mensual evalúa exclusivamente el gasto de la casa
+  const fondoCasaDisponible = propFondoCasaDisponible !== undefined 
+    ? propFondoCasaDisponible 
+    : Math.max(0, Number(casaBasePartida) + (totalIngresosCasa || 0) - totalGastadoCasa);
+
+  const fondoPersonalDisponible = propFondoPersonalDisponible !== undefined 
+    ? propFondoPersonalDisponible 
+    : Math.max(0, dineroPersonalInicial + (totalIngresosPersonal || 0) - totalGastadoPersonal);
+
+  // El presupuesto previsto mensual evalúa exclusivamente el gasto de la casa en el mes
   const totalConsumidoPresupuesto = totalGastadoCasaPresupuesto || totalGastadoCasa;
   const porcentajePresupuestoConsumido = presupuestoPrevisto > 0 
     ? (totalConsumidoPresupuesto / presupuestoPrevisto) * 100 
@@ -74,6 +96,19 @@ export default function FraccionamientoHeader({
       ajuste_ingreso_personal: Number(ajusteIngresoPersonal)
     });
     setIsEditModalOpen(false);
+  };
+
+  const handleSaveBudget = (e) => {
+    if (e) e.preventDefault();
+    const val = Number(nuevoPresupuestoInput);
+    if (isNaN(val) || val < 0) return;
+    setPresupuestoPrevisto(val);
+    onUpdateSettings({
+      ...settings,
+      regla_tipo: 'manual',
+      presupuesto_previsto_manual: val
+    });
+    setIsEditBudgetModalOpen(false);
   };
 
   let budgetColor = 'var(--color-success)';
@@ -95,37 +130,41 @@ export default function FraccionamientoHeader({
     return clean;
   };
 
-  // --- FILTROS DE ÚLTIMOS 3 INGRESOS Y 3 EGRESOS POR TARJETA ---
+  // --- MOVIMIENTOS RECIENTES PARA HOVER (ÚLTIMOS 3 ORDENADOS POR FECHA) ---
+  const recentSource = useMemo(() => {
+    const list = (allTransactions && allTransactions.length > 0) ? [...allTransactions] : [...(monthTransactions || [])];
+    return list.sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
+  }, [allTransactions, monthTransactions]);
 
-  // 1. Saldo Global (Todo lo que entra y sale de la cuenta)
+  // 1. Saldo Global (Todo lo que entra y sale)
   const saldoIngresos = useMemo(() => {
-    return monthTransactions
+    return recentSource
       .filter(tx => tx.tipo === 'ingreso')
       .slice(0, 3)
       .map(tx => ({ fecha: formatDateShort(tx.fecha), desc: tx.descripcion, monto: tx.monto, esCasa: !!tx.es_gasto_casa }));
-  }, [monthTransactions]);
+  }, [recentSource]);
 
   const saldoEgresos = useMemo(() => {
-    return monthTransactions
+    return recentSource
       .filter(tx => tx.tipo === 'egreso')
       .slice(0, 3)
       .map(tx => ({ fecha: formatDateShort(tx.fecha), desc: tx.descripcion, monto: tx.monto, esCasa: !!tx.es_gasto_casa }));
-  }, [monthTransactions]);
+  }, [recentSource]);
 
   // 2. Fondo Casa (Solo de la casa)
   const casaIngresos = useMemo(() => {
-    return monthTransactions
+    return recentSource
       .filter(tx => tx.tipo === 'ingreso' && !!tx.es_gasto_casa)
       .slice(0, 3)
       .map(tx => ({ fecha: formatDateShort(tx.fecha), desc: tx.descripcion, monto: tx.monto }));
-  }, [monthTransactions]);
+  }, [recentSource]);
 
   const casaEgresos = useMemo(() => {
-    const manuales = monthTransactions
+    return recentSource
       .filter(tx => tx.tipo === 'egreso' && !!tx.es_gasto_casa)
+      .slice(0, 3)
       .map(tx => ({ fecha: formatDateShort(tx.fecha), desc: tx.descripcion, monto: tx.monto }));
-    return manuales.slice(0, 3);
-  }, [monthTransactions]);
+  }, [recentSource]);
 
   // 3. Presupuesto (Muestra los egresos de la casa)
   const presupuestoIngresos = casaIngresos;
@@ -133,18 +172,18 @@ export default function FraccionamientoHeader({
 
   // 4. Dinero Mío (Personal)
   const personalIngresos = useMemo(() => {
-    return monthTransactions
+    return recentSource
       .filter(tx => tx.tipo === 'ingreso' && !tx.es_gasto_casa)
       .slice(0, 3)
       .map(tx => ({ fecha: formatDateShort(tx.fecha), desc: tx.descripcion, monto: tx.monto }));
-  }, [monthTransactions]);
+  }, [recentSource]);
 
   const personalEgresos = useMemo(() => {
-    return monthTransactions
+    return recentSource
       .filter(tx => tx.tipo === 'egreso' && !tx.es_gasto_casa)
       .slice(0, 3)
       .map(tx => ({ fecha: formatDateShort(tx.fecha), desc: tx.descripcion, monto: tx.monto }));
-  }, [monthTransactions]);
+  }, [recentSource]);
 
   return (
     <div style={{
@@ -314,16 +353,16 @@ export default function FraccionamientoHeader({
               <h4 style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: 'var(--color-gold)', fontWeight: 700 }}>DESGLOSE DE SALDO EN CUENTA</h4>
               <div style={{ fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: '3px', borderBottom: '1px solid var(--color-border)', paddingBottom: '8px', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Saldo al Inicio del Mes:</span>
-                  <span>{formatARS(baseSaldoMes)}</span>
+                  <span>Punto de Partida en Cuenta:</span>
+                  <span>{formatARS(saldoBasePartida)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
-                  <span>(+) Total Ingresos Mes:</span>
-                  <span>+{formatARS(totalIngresosMes)}</span>
+                  <span>(+) Ingresos Totales:</span>
+                  <span>+{formatARS(totalIngresosCasaAcumulado + totalIngresosPersonalAcumulado)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e74c3c' }}>
-                  <span>(-) Total Egresos Mes:</span>
-                  <span>-{formatARS(totalEgresosMes)}</span>
+                  <span>(-) Egresos Reales Totales:</span>
+                  <span>-{formatARS(totalGastosCasaRealAcumulado + totalGastosPersonalAcumulado)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: 'var(--color-gold)', marginTop: '2px' }}>
                   <span>(=) Saldo Real Actual:</span>
@@ -386,14 +425,44 @@ export default function FraccionamientoHeader({
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-            <span style={{ color: 'var(--color-gold)', fontSize: '0.85rem', fontWeight: 500 }}>Presupuesto Previsto (Casa)</span>
-            <Calendar size={18} style={{ color: 'var(--color-gold)' }} />
+            <span style={{ color: 'var(--color-gold)', fontSize: '0.85rem', fontWeight: 600 }}>Presupuesto Previsto (Casa)</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setNuevoPresupuestoInput(presupuestoPrevisto);
+                  setIsEditBudgetModalOpen(true);
+                }}
+                title="Modificar Presupuesto Manualmente"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  backgroundColor: 'rgba(201, 168, 76, 0.18)',
+                  color: 'var(--color-gold)',
+                  border: '1px solid rgba(201, 168, 76, 0.4)',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'rgba(201, 168, 76, 0.35)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'rgba(201, 168, 76, 0.18)'; }}
+              >
+                <Pencil size={12} />
+                <span>Modificar</span>
+              </button>
+              <Calendar size={18} style={{ color: 'var(--color-gold)' }} />
+            </div>
           </div>
           <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--color-gold)' }}>
             {formatARS(presupuestoPrevisto)}
           </div>
           <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <Info size={12} /> Hover resumen · Clic desglose
+            <Info size={12} /> Hover resumen · Clic desglose / Modificar
           </div>
 
           {/* Floating Tooltip para Presupuesto */}
@@ -486,15 +555,15 @@ export default function FraccionamientoHeader({
               <div style={{ fontSize: '0.78rem', display: 'flex', flexDirection: 'column', gap: '3px', borderBottom: '1px solid var(--color-border)', paddingBottom: '8px', marginBottom: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span>Fondo Inicial Casa:</span>
-                  <span>{formatARS(montoDestinadoCasa)}</span>
+                  <span>{formatARS(casaBasePartida)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
-                  <span>(+) Aportes a Casa:</span>
-                  <span>+{formatARS(totalIngresosCasa)}</span>
+                  <span>(+) Aportes a Casa Totales:</span>
+                  <span>+{formatARS(totalIngresosCasaAcumulado)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e74c3c' }}>
                   <span>(-) Gastos Casa Totales:</span>
-                  <span>-{formatARS(totalGastadoCasa)}</span>
+                  <span>-{formatARS(totalGastosCasaRealAcumulado)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#61AFEF', marginTop: '2px' }}>
                   <span>(=) Remanente Casa:</span>
@@ -584,12 +653,12 @@ export default function FraccionamientoHeader({
                   <span>{formatARS(dineroPersonalInicial)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
-                  <span>(+) Mis Comisiones / Ingresos:</span>
-                  <span>+{formatARS(totalIngresosPersonal)}</span>
+                  <span>(+) Mis Ingresos / Comisiones:</span>
+                  <span>+{formatARS(totalIngresosPersonalAcumulado)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e74c3c' }}>
                   <span>(-) Mis Gastos Personales:</span>
-                  <span>-{formatARS(totalGastadoPersonal)}</span>
+                  <span>-{formatARS(totalGastosPersonalAcumulado)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#98C379', marginTop: '2px' }}>
                   <span>(=) Dinero Mío Disponible:</span>
@@ -771,6 +840,171 @@ export default function FraccionamientoHeader({
         </div>
       )}
 
+      {/* Modal Dedicado para Modificar Rápido el Presupuesto Mensual */}
+      {isEditBudgetModalOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 1100,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
+          backdropFilter: 'blur(6px)'
+        }}>
+          <div style={{
+            backgroundColor: '#161B26',
+            border: '1px solid var(--color-gold)',
+            borderRadius: '16px',
+            padding: '24px',
+            maxWidth: '480px',
+            width: '100%',
+            color: 'var(--color-text)',
+            boxShadow: '0 24px 60px rgba(0,0,0,0.85)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <div style={{
+                width: '40px', height: '40px', borderRadius: '10px',
+                backgroundColor: 'rgba(201, 168, 76, 0.15)', color: 'var(--color-gold)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                <Calendar size={22} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--color-gold)', fontWeight: 700 }}>
+                  Modificar Presupuesto Mensual (Casa)
+                </h3>
+                <span style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                  Ajusta el presupuesto previsto según tus necesidades de este mes.
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveBudget}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ display: 'block', fontSize: '0.85rem', color: 'var(--color-text)', fontWeight: 600, marginBottom: '6px' }}>
+                  Monto del Presupuesto Previsto (ARS):
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--color-gold)', fontWeight: 700 }}>
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    autoFocus
+                    value={nuevoPresupuestoInput}
+                    onChange={(e) => setNuevoPresupuestoInput(e.target.value)}
+                    placeholder="Ej. 3000000"
+                    style={{
+                      width: '100%', padding: '12px 12px 12px 28px', borderRadius: '8px',
+                      backgroundColor: 'var(--color-surface-2)', border: '1px solid rgba(201, 168, 76, 0.4)',
+                      color: 'var(--color-text)', fontSize: '1.1rem', fontWeight: 700
+                    }}
+                  />
+                </div>
+                {Number(nuevoPresupuestoInput) > 0 && (
+                  <span style={{ fontSize: '0.78rem', color: 'var(--color-gold)', marginTop: '4px', display: 'block', fontWeight: 600 }}>
+                    Formato: {formatARS(nuevoPresupuestoInput)}
+                  </span>
+                )}
+              </div>
+
+              {/* Botones de acceso rápido */}
+              <div style={{ marginBottom: '20px' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: '8px', fontWeight: 600 }}>
+                  Accesos rápidos:
+                </div>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {[2500000, 3000000, 3500000, 4000000].map(val => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setNuevoPresupuestoInput(val)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        border: Number(nuevoPresupuestoInput) === val ? '1px solid var(--color-gold)' : '1px solid var(--color-border)',
+                        backgroundColor: Number(nuevoPresupuestoInput) === val ? 'rgba(201, 168, 76, 0.2)' : 'var(--color-surface-2)',
+                        color: Number(nuevoPresupuestoInput) === val ? 'var(--color-gold)' : 'var(--color-text-muted)',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {formatARS(val)}
+                    </button>
+                  ))}
+                  {totalPresupuestadoCasa > 0 && totalPresupuestadoCasa !== 3000000 && (
+                    <button
+                      type="button"
+                      onClick={() => setNuevoPresupuestoInput(totalPresupuestadoCasa)}
+                      style={{
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid rgba(97, 175, 239, 0.4)',
+                        backgroundColor: 'rgba(97, 175, 239, 0.1)',
+                        color: '#61AFEF',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Total Sobres ({formatARS(totalPresupuestadoCasa)})
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Impacto en el Termómetro */}
+              {Number(nuevoPresupuestoInput) > 0 && (
+                <div style={{
+                  backgroundColor: 'rgba(255,255,255,0.03)',
+                  border: '1px solid var(--color-border)',
+                  borderRadius: '10px',
+                  padding: '12px',
+                  marginBottom: '20px',
+                  fontSize: '0.8rem'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ color: 'var(--color-text-muted)' }}>Gasto Ejecutado Casa este mes:</span>
+                    <span style={{ fontWeight: 600, color: '#61AFEF' }}>{formatARS(totalConsumidoPresupuesto)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                    <span style={{ color: 'var(--color-text)' }}>Restante Disponible estimado:</span>
+                    <span style={{ color: Number(nuevoPresupuestoInput) - totalConsumidoPresupuesto >= 0 ? '#2ecc71' : '#e74c3c' }}>
+                      {formatARS(Number(nuevoPresupuestoInput) - totalConsumidoPresupuesto)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsEditBudgetModalOpen(false)}
+                  style={{
+                    padding: '8px 16px', borderRadius: '8px', border: '1px solid var(--color-border)',
+                    backgroundColor: 'transparent', color: 'var(--color-text-muted)', cursor: 'pointer',
+                    fontSize: '0.85rem'
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  style={{
+                    padding: '8px 20px', borderRadius: '8px', border: 'none',
+                    backgroundColor: 'var(--color-gold)', color: '#000', fontWeight: 700,
+                    cursor: 'pointer', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px'
+                  }}
+                >
+                  <Check size={16} />
+                  <span>Guardar Presupuesto</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Modal Sumar Fondos */}
       <SumarFondosModal
         isOpen={isSumarFondosOpen}
@@ -805,10 +1039,19 @@ export default function FraccionamientoHeader({
           onClose={() => setSelectedModalCard(null)}
           cardType={selectedModalCard}
           settings={settings}
-          saldoManual={saldoManual}
-          saldoInicioMes={baseSaldoMes}
+          saldoManual={saldoBasePartida}
+          saldoInicioMes={saldoInicioMes}
+          saldoActualTotal={saldoActualTotal}
+          fondoCasaDisponible={fondoCasaDisponible}
+          fondoPersonalDisponible={fondoPersonalDisponible}
+          basePartidaCasa={casaBasePartida}
+          basePartidaPersonal={dineroPersonalInicial}
+          totalIngresosCasaAcumulado={totalIngresosCasaAcumulado}
+          totalGastosCasaRealAcumulado={totalGastosCasaRealAcumulado}
+          totalIngresosPersonalAcumulado={totalIngresosPersonalAcumulado}
+          totalGastosPersonalAcumulado={totalGastosPersonalAcumulado}
           presupuestoPrevisto={presupuestoPrevisto}
-          montoDestinadoCasa={montoDestinadoCasa}
+          montoDestinadoCasa={casaBasePartida}
           totalPresupuestadoCasa={totalPresupuestadoCasa}
           totalGastadoCasa={totalGastadoCasa}
           totalDebitoAutomaticoActivo={totalDebitoAutomaticoActivo}
@@ -816,6 +1059,7 @@ export default function FraccionamientoHeader({
           totalIngresosCasa={totalIngresosCasa}
           totalIngresosPersonal={totalIngresosPersonal}
           monthTransactions={monthTransactions}
+          allTransactions={allTransactions}
           buckets={buckets}
           spendingPerBucket={spendingPerBucket}
           autoExpenses={autoExpenses}
