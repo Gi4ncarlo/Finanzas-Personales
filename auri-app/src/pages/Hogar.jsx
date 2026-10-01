@@ -396,8 +396,9 @@ export default function Hogar() {
     return buckets.reduce((acc, b) => acc + Number(b.monto_presupuestado || 0), 0);
   }, [buckets]);
 
-  // Fondos disponibles en el mes seleccionado (incluye servicios y débitos marcados como pagados)
-  const fondoCasaDisponible = Math.max(0, acumuladoPrevioMes.saldoCasa + totalIngresosCasaMes - totalGastadoCasa);
+  // Fondos disponibles en el mes seleccionado (SOLO transacciones reales - sin débitos automáticos ni servicios virtuales)
+  // Los débitos automáticos y servicios solo afectan el cálculo del Presupuesto/Termómetro, NO el saldo real del Fondo Casa.
+  const fondoCasaDisponible = Math.max(0, acumuladoPrevioMes.saldoCasa + totalIngresosCasaMes - totalGastadoCasaRealMes);
   const fondoPersonalDisponible = Math.max(0, acumuladoPrevioMes.saldoPersonal + totalIngresosPersonalMes - totalGastadoPersonalMes);
   const saldoActualTotal = fondoCasaDisponible + fondoPersonalDisponible;
 
