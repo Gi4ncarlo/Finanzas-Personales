@@ -253,11 +253,7 @@ export default function Hogar() {
           }
         } else if (tx.tipo === 'egreso') {
           if (isCasa) {
-            const desc = (tx.descripcion || '').toLowerCase();
-            const esRepuesto = desc.includes('repuestos');
-            if (!esRepuesto) {
-              egresosCasa += Number(tx.monto || 0);
-            }
+            egresosCasa += Number(tx.monto || 0);
           } else {
             egresosPersonal += Number(tx.monto || 0);
           }
