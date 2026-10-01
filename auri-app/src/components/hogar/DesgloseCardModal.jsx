@@ -81,7 +81,7 @@ export default function DesgloseCardModal({
 
   const fondoCasaDisponible = propFondoCasaDisponible !== undefined 
     ? propFondoCasaDisponible 
-    : Math.max(0, casaBasePartida + (totalIngresosCasa || 0) - (totalGastadoCasaReal || totalGastadoCasa || 0));
+    : Math.max(0, casaBasePartida + (totalIngresosCasa || 0) - (totalGastadoCasaReal !== undefined ? totalGastadoCasaReal : (totalGastadoCasa || 0)));
 
   const fondoPersonalDisponible = propFondoPersonalDisponible !== undefined 
     ? propFondoPersonalDisponible 
@@ -346,7 +346,7 @@ export default function DesgloseCardModal({
             <div style={{ backgroundColor: 'rgba(231, 76, 60, 0.1)', padding: '14px', borderRadius: '10px', border: '1px solid rgba(231, 76, 60, 0.3)' }}>
               <div style={{ fontSize: '0.72rem', color: '#e74c3c', textTransform: 'uppercase', fontWeight: 600 }}>(-) Gastos Casa del Mes</div>
               <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#e74c3c', marginTop: '2px' }}>
-                -{formatARS(totalGastadoCasaReal || totalGastadoCasa || 0)}
+                -{formatARS(totalGastadoCasaReal !== undefined ? totalGastadoCasaReal : (totalGastadoCasa || 0))}
               </div>
             </div>
             <div style={{ backgroundColor: 'rgba(97, 175, 239, 0.12)', padding: '14px', borderRadius: '10px', border: '1px solid #61AFEF' }}>

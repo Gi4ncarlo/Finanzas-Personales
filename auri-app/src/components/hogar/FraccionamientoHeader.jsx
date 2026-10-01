@@ -69,7 +69,7 @@ export default function FraccionamientoHeader({
 
   const fondoCasaDisponible = propFondoCasaDisponible !== undefined 
     ? propFondoCasaDisponible 
-    : Math.max(0, casaBasePartida + (totalIngresosCasa || 0) - (totalGastadoCasaReal || totalGastadoCasa || 0));
+    : Math.max(0, casaBasePartida + (totalIngresosCasa || 0) - (totalGastadoCasaReal !== undefined ? totalGastadoCasaReal : (totalGastadoCasa || 0)));
 
   const fondoPersonalDisponible = propFondoPersonalDisponible !== undefined 
     ? propFondoPersonalDisponible 
@@ -562,7 +562,7 @@ export default function FraccionamientoHeader({
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#e74c3c' }}>
                   <span>(-) Gastos Casa del Mes:</span>
-                  <span>-{formatARS(totalGastadoCasaReal || totalGastadoCasa)}</span>
+                  <span>-{formatARS(totalGastadoCasaReal !== undefined ? totalGastadoCasaReal : (totalGastadoCasa || 0))}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, color: '#61AFEF', marginTop: '2px' }}>
                   <span>(=) Fondo Casa Disponible:</span>
