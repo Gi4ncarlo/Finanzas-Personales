@@ -132,8 +132,28 @@ export default function FraccionamientoHeader({
   // --- MOVIMIENTOS RECIENTES PARA HOVER (ÚLTIMOS 3 ORDENADOS POR FECHA DEL MES) ---
   const recentSource = useMemo(() => {
     const list = [...(monthTransactions || [])];
+    (services || []).forEach(s => {
+      if (paidServices && paidServices[s.id]) {
+        const hasRealTx = list.some(tx => 
+          tx.tipo === 'egreso' && (
+            tx.descripcion?.toLowerCase().includes(`pago: ${s.nombre}`.toLowerCase()) || 
+            tx.descripcion?.toLowerCase().includes(s.nombre?.toLowerCase())
+          )
+        );
+        if (!hasRealTx) {
+          list.push({
+            id: `svc_${s.id}`,
+            fecha: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(s.dia_vencimiento || 1).padStart(2, '0')}`,
+            descripcion: `${s.nombre} (Servicio Pagado)`,
+            monto: Number(s.monto_estimado || 0),
+            tipo: 'egreso',
+            es_gasto_casa: true
+          });
+        }
+      }
+    });
     return list.sort((a, b) => String(b.fecha || '').localeCompare(String(a.fecha || '')));
-  }, [monthTransactions]);
+  }, [monthTransactions, services, paidServices]);
 
   // 1. Saldo Global (Todo lo que entra y sale)
   const saldoIngresos = useMemo(() => {

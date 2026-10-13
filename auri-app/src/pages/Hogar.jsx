@@ -304,6 +304,26 @@ export default function Hogar() {
       .reduce((sum, tx) => sum + Number(tx.monto || 0), 0);
   }, [monthTransactions, isHouseTx]);
 
+  // Servicios marcados como pagados en el checklist que no tienen transacción real registrada
+  const totalServiciosChecklistPagados = useMemo(() => {
+    if (!services || !paidServices) return 0;
+    let sum = 0;
+    services.forEach(s => {
+      const isPaid = !!paidServices[s.id];
+      if (isPaid) {
+        const hasRealTx = monthTransactions?.some(tx => 
+          tx.tipo === 'egreso' && 
+          (tx.descripcion?.toLowerCase().includes(`pago: ${s.nombre}`.toLowerCase()) || 
+           tx.descripcion?.toLowerCase().includes(s.nombre.toLowerCase()))
+        );
+        if (!hasRealTx) {
+          sum += Number(s.monto_estimado || 0);
+        }
+      }
+    });
+    return sum;
+  }, [services, paidServices, monthTransactions]);
+
   // Gasto Mensual Total de la Casa para Presupuesto (Real + Débitos + Servicios checklist)
   const totalGastadoCasaPresupuesto = useMemo(() => {
     if (!user) return 0;
@@ -315,24 +335,13 @@ export default function Hogar() {
       .filter(ae => ae.activo)
       .reduce((sum, ae) => sum + Number(ae.monto || 0), 0);
 
-    // Servicios marcados como pagados que no tienen transacción real registrada
-    let serviceSum = 0;
-    services.forEach(s => {
-      const isPaid = !!paidServices[s.id];
-      if (isPaid) {
-        const hasRealTx = monthTransactions?.some(tx => 
-          tx.tipo === 'egreso' && 
-          (tx.descripcion?.toLowerCase().includes(`pago: ${s.nombre}`.toLowerCase()) || 
-           tx.descripcion?.toLowerCase().includes(s.nombre.toLowerCase()))
-        );
-        if (!hasRealTx) {
-          serviceSum += Number(s.monto_estimado || 0);
-        }
-      }
-    });
+    return manualSum + autoSum + totalServiciosChecklistPagados;
+  }, [user, totalGastadoCasaRealMes, autoExpenses, totalServiciosChecklistPagados]);
 
-    return manualSum + autoSum + serviceSum;
-  }, [monthTransactions, autoExpenses, services, paidServices, user, totalGastadoCasaRealMes]);
+  // Gasto efectivo total de la casa en el mes (egresos reales + servicios marcados como pagados con el tilde)
+  const totalGastadoCasaEfectivo = useMemo(() => {
+    return totalGastadoCasaRealMes + totalServiciosChecklistPagados;
+  }, [totalGastadoCasaRealMes, totalServiciosChecklistPagados]);
 
   const totalGastadoCasa = totalGastadoCasaPresupuesto;
   const totalGastadoPersonal = totalGastadoPersonalMes;
@@ -392,9 +401,8 @@ export default function Hogar() {
     return buckets.reduce((acc, b) => acc + Number(b.monto_presupuestado || 0), 0);
   }, [buckets]);
 
-  // Fondos disponibles en el mes seleccionado (SOLO transacciones reales - sin débitos automáticos ni servicios virtuales)
-  // Los débitos automáticos y servicios solo afectan el cálculo del Presupuesto/Termómetro, NO el saldo real del Fondo Casa.
-  const fondoCasaDisponible = Math.max(0, acumuladoPrevioMes.saldoCasa + totalIngresosCasaMes - totalGastadoCasaRealMes);
+  // Fondos disponibles en el mes seleccionado (incluye transacciones reales y servicios marcados con el tilde)
+  const fondoCasaDisponible = Math.max(0, acumuladoPrevioMes.saldoCasa + totalIngresosCasaMes - totalGastadoCasaEfectivo);
   const fondoPersonalDisponible = Math.max(0, acumuladoPrevioMes.saldoPersonal + totalIngresosPersonalMes - totalGastadoPersonalMes);
   const saldoActualTotal = fondoCasaDisponible + fondoPersonalDisponible;
 
@@ -801,7 +809,8 @@ export default function Hogar() {
       account_id: settings?.account_id || (accounts[0]?.id || ''),
       category_id: bucket?.categoria_id || '',
       household_bucket_id: service.bucket_id || null,
-      es_gasto_casa: true
+      es_gasto_casa: true,
+      service_id: service.id
     });
     setIsTxModalOpen(true);
   };
@@ -868,6 +877,11 @@ export default function Hogar() {
         toast.error('Error al guardar la transacción');
         throw error;
       }
+    }
+
+    if (txInitialData?.service_id) {
+      const updated = toggleServicePayment(user.id, txInitialData.service_id, currentYearMonth, true);
+      setPaidServices(updated);
     }
 
     toast.success('Transacción registrada.');
@@ -1063,7 +1077,7 @@ export default function Hogar() {
             onOpenCalculator={() => setIsCalculatorOpen(true)}
             totalPresupuestadoCasa={totalPresupuestadoCasa}
             totalGastadoCasa={totalGastadoCasaPresupuesto}
-            totalGastadoCasaReal={totalGastadoCasaRealMes}
+            totalGastadoCasaReal={totalGastadoCasaEfectivo}
             totalGastadoCasaPresupuesto={totalGastadoCasaPresupuesto}
             totalDebitoAutomaticoActivo={totalDebitoAutomaticoActivo}
             totalGastadoPersonal={totalGastadoPersonal}

@@ -115,9 +115,32 @@ export default function DesgloseCardModal({
   const transactionsList = useMemo(() => {
     let list = [];
 
+    // Servicios del checklist marcados como pagados sin transacción real registrada
+    const paidServs = (services || [])
+      .filter(s => !!paidServices[s.id])
+      .filter(s => !safeTxs.some(tx => 
+        tx.tipo === 'egreso' && (
+          tx.descripcion?.toLowerCase().includes(`pago: ${s.nombre}`.toLowerCase()) || 
+          tx.descripcion?.toLowerCase().includes(s.nombre?.toLowerCase())
+        )
+      ))
+      .map(s => {
+        const bucket = safeBuckets.find(b => b.id === s.bucket_id);
+        return {
+          id: `svc_${s.id}`,
+          fecha: `Día ${s.dia_vencimiento || '01'}`,
+          rawFecha: `2026-10-${String(s.dia_vencimiento || 1).padStart(2, '0')}`,
+          descripcion: `${s.nombre} (Servicio Pagado)`,
+          monto: Number(s.monto_estimado || 0),
+          tipo: 'egreso',
+          esCasa: true,
+          tag: bucket?.nombre || 'Servicio Casa'
+        };
+      });
+
     if (currentType === 'saldo') {
-      // Todas las transacciones del mes
-      list = safeTxs.map(tx => ({
+      // Todas las transacciones del mes + servicios pagados
+      const manual = safeTxs.map(tx => ({
         id: tx.id,
         fecha: formatDate(tx.fecha),
         rawFecha: tx.fecha || '',
@@ -127,8 +150,9 @@ export default function DesgloseCardModal({
         esCasa: !!tx.es_gasto_casa,
         tag: tx.es_gasto_casa ? 'Casa' : 'Personal'
       }));
+      list = [...manual, ...paidServs];
     } else if (currentType === 'presupuesto') {
-      // Exclusivamente egresos de la casa + autos activos del hogar
+      // Exclusivamente egresos de la casa + autos activos del hogar + servicios pagados
       const manualEgresosCasa = safeTxs
         .filter(tx => tx.tipo === 'egreso' && !!tx.es_gasto_casa)
         .map(tx => ({
@@ -155,9 +179,9 @@ export default function DesgloseCardModal({
           tag: 'Débito Auto Casa'
         }));
 
-      list = [...manualEgresosCasa, ...autos];
+      list = [...manualEgresosCasa, ...autos, ...paidServs];
     } else if (currentType === 'casa') {
-      // Movimientos de casa del mes
+      // Movimientos de casa del mes + servicios pagados
       const manualCasa = safeTxs
         .filter(tx => !!tx.es_gasto_casa)
         .map(tx => {
@@ -174,23 +198,7 @@ export default function DesgloseCardModal({
           };
         });
 
-      const autos = safeAutoExpenses
-        .filter(ae => ae.activo)
-        .map(ae => {
-          const bucket = safeBuckets.find(b => b.id === ae.bucket_id);
-          return {
-            id: ae.id,
-            fecha: `Día ${ae.dia_debito}`,
-            rawFecha: `2026-08-${String(ae.dia_debito).padStart(2, '0')}`,
-            descripcion: `${ae.nombre} (Débito Automático)`,
-            monto: Number(ae.monto || 0),
-            tipo: 'egreso',
-            esCasa: true,
-            tag: bucket?.nombre || 'General Hogar'
-          };
-        });
-
-      list = [...manualCasa, ...autos];
+      list = [...manualCasa, ...paidServs];
     } else if (currentType === 'personal') {
       // Movimientos personales del mes
       list = safeTxs
